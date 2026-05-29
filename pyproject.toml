@@ -1,0 +1,113 @@
+[build-system]
+requires      = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name            = "exfer-mcp"
+dynamic         = ["version"]
+description     = "Model Context Protocol server for the Exfer blockchain — gives an AI agent direct, typed access to an exfer-walletd hot wallet"
+readme          = "README.md"
+license         = { text = "MIT" }
+requires-python = ">=3.10,<3.14"
+authors         = [{ name = "exfer-stack" }]
+keywords        = ["exfer", "mcp", "agent", "wallet", "crypto"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# Pinned to >=0.8 because the v0.1 tool surface uses simulate_transfer +
+# wait_for_tx + payment_uri_* — all walletd v1.9 methods that landed in
+# exfer-walletd 0.8.0. Drop the lower bound only when the MCP tool
+# surface stops using them.
+dependencies = [
+    "exfer-walletd>=0.8.0,<1.0",
+    "mcp>=1.0,<2.0",
+]
+
+[project.scripts]
+# The single entrypoint a Claude Desktop / Claude Code config refers
+# to. The stdio transport is launched here.
+exfer-mcp = "exfer_mcp.server:main"
+
+[project.urls]
+Homepage      = "https://github.com/exfer-stack/exfer-mcp"
+Repository    = "https://github.com/exfer-stack/exfer-mcp"
+"Bug Tracker" = "https://github.com/exfer-stack/exfer-mcp/issues"
+"exfer-walletd (Rust daemon)" = "https://github.com/exfer-stack/exfer-walletd"
+"exfer-walletd (Python SDK)"  = "https://github.com/exfer-stack/exfer-py"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "mypy>=1.10,<2.0",
+    "ruff>=0.5",
+]
+
+[tool.hatch.version]
+path = "src/exfer_mcp/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/exfer_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/exfer_mcp",
+    "tests",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "pyproject.toml",
+]
+
+[tool.ruff]
+line-length    = 100
+target-version = "py310"
+src            = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.mypy]
+python_version          = "3.10"
+strict                  = true
+warn_unreachable        = true
+disallow_any_unimported = true
+files                   = ["src/exfer_mcp"]
+
+[[tool.mypy.overrides]]
+module                 = ["respx"]
+ignore_missing_imports = true
+
+# The `mcp` SDK's `Server.list_tools()` / `Server.call_tool()` decorators
+# are not typed in the upstream package. We can't make them strict without
+# stubs; silence the two specific codes they emit so we don't slacken
+# strict-mode elsewhere.
+[[tool.mypy.overrides]]
+module                = ["exfer_mcp.server"]
+disable_error_code    = ["no-untyped-call", "misc", "untyped-decorator"]
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+pythonpath   = ["src"]
+asyncio_mode = "auto"
+
+[tool.uv.sources]
+# Local-checkout override while the matching `exfer-walletd` 0.8.0
+# isn't on PyPI yet. When the wheel ships, drop this section and the
+# normal PyPI resolver will take over.
+exfer-walletd = { path = "../exfer-py", editable = true }
