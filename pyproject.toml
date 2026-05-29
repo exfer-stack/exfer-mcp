@@ -105,9 +105,3 @@ disable_error_code    = ["no-untyped-call", "misc", "untyped-decorator"]
 testpaths    = ["tests"]
 pythonpath   = ["src"]
 asyncio_mode = "auto"
-
-[tool.uv.sources]
-# Local-checkout override while the matching `exfer-walletd` 0.8.0
-# isn't on PyPI yet. When the wheel ships, drop this section and the
-# normal PyPI resolver will take over.
-exfer-walletd = { path = "../exfer-py", editable = true }
