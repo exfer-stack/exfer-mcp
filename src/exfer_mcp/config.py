@@ -57,13 +57,13 @@ class Config:
                 "`env` block to the bearer token walletd was started with"
             )
 
+        # Fingerprint pinning is optional even for https. The SDK pins
+        # only when set; without it, httpx falls back to the system CA
+        # chain — appropriate for fly-fronted / public-CA TLS. The
+        # operator path (walletd's own --tls with a self-signed cert)
+        # SHOULD set the fingerprint, but enforcing it would block
+        # legitimate publicly-fronted deployments.
         fingerprint = os.environ.get("WALLETD_FINGERPRINT") or None
-        if url.startswith("https://") and not fingerprint:
-            raise ConfigError(
-                "WALLETD_FINGERPRINT is required for https:// URLs — set it "
-                "to the `sha256:<hex>` value walletd printed at startup "
-                "(also available in `<datadir>/cert.fingerprint`)"
-            )
 
         fee_rate_str = os.environ.get("EXFER_MCP_DEFAULT_FEE_RATE")
         default_fee_rate: int | None
