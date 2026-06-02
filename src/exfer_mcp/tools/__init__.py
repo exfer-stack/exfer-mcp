@@ -28,7 +28,46 @@ from .transfer import (
     simulate_transfer,
     transfer,
 )
-from .wait import WAIT_FOR_TX_TOOL, wait_for_tx
+from .wait import (
+    WAIT_FOR_PAYMENT_TOOL,
+    WAIT_FOR_TX_TOOL,
+    wait_for_payment,
+    wait_for_tx,
+)
+from .signing import (
+    SIGN_MESSAGE_TOOL,
+    VERIFY_MESSAGE_TOOL,
+    sign_message,
+    verify_message,
+)
+from .htlc import (
+    HTLC_CLAIM_TOOL,
+    HTLC_LIST_TOOL,
+    HTLC_LOCK_TOOL,
+    HTLC_RECLAIM_TOOL,
+    HTLC_STATUS_TOOL,
+    htlc_claim,
+    htlc_list,
+    htlc_lock,
+    htlc_reclaim,
+    htlc_status,
+)
+from .reputation import (
+    DETECT_IN_CHAIN_SWAPS_TOOL,
+    GET_ADDRESS_HISTORY_TOOL,
+    GET_ATTESTATION_EDGES_TOOL,
+    detect_in_chain_swaps,
+    get_address_history,
+    get_attestation_edges,
+)
+from .naming import (
+    NAME_CLAIM_TOOL,
+    NAME_SCRIPT_TOOL,
+    RESOLVE_NAME_TOOL,
+    name_claim,
+    name_script,
+    resolve_name,
+)
 
 __all__ = ["HANDLERS", "TOOLS"]
 
@@ -41,8 +80,26 @@ TOOLS: list[mcp_types.Tool] = [
     SIMULATE_TRANSFER_TOOL,
     TRANSFER_TOOL,
     WAIT_FOR_TX_TOOL,
+    WAIT_FOR_PAYMENT_TOOL,
     PAYMENT_URI_ENCODE_TOOL,
     PAYMENT_URI_DECODE_TOOL,
+    # identity / proof-of-control
+    SIGN_MESSAGE_TOOL,
+    VERIFY_MESSAGE_TOOL,
+    # conditional payment (HTLC)
+    HTLC_LOCK_TOOL,
+    HTLC_CLAIM_TOOL,
+    HTLC_RECLAIM_TOOL,
+    HTLC_STATUS_TOOL,
+    HTLC_LIST_TOOL,
+    # counterparty reputation / history
+    GET_ADDRESS_HISTORY_TOOL,
+    GET_ATTESTATION_EDGES_TOOL,
+    DETECT_IN_CHAIN_SWAPS_TOOL,
+    # human-readable names
+    RESOLVE_NAME_TOOL,
+    NAME_CLAIM_TOOL,
+    NAME_SCRIPT_TOOL,
 ]
 
 HANDLERS: dict[str, ToolHandler] = {
@@ -51,6 +108,20 @@ HANDLERS: dict[str, ToolHandler] = {
     SIMULATE_TRANSFER_TOOL.name: simulate_transfer,
     TRANSFER_TOOL.name: transfer,
     WAIT_FOR_TX_TOOL.name: wait_for_tx,
+    WAIT_FOR_PAYMENT_TOOL.name: wait_for_payment,
     PAYMENT_URI_ENCODE_TOOL.name: payment_uri_encode,
     PAYMENT_URI_DECODE_TOOL.name: payment_uri_decode,
+    SIGN_MESSAGE_TOOL.name: sign_message,
+    VERIFY_MESSAGE_TOOL.name: verify_message,
+    HTLC_LOCK_TOOL.name: htlc_lock,
+    HTLC_CLAIM_TOOL.name: htlc_claim,
+    HTLC_RECLAIM_TOOL.name: htlc_reclaim,
+    HTLC_STATUS_TOOL.name: htlc_status,
+    HTLC_LIST_TOOL.name: htlc_list,
+    GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
+    GET_ATTESTATION_EDGES_TOOL.name: get_attestation_edges,
+    DETECT_IN_CHAIN_SWAPS_TOOL.name: detect_in_chain_swaps,
+    RESOLVE_NAME_TOOL.name: resolve_name,
+    NAME_CLAIM_TOOL.name: name_claim,
+    NAME_SCRIPT_TOOL.name: name_script,
 }

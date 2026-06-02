@@ -6,7 +6,7 @@ Model Context Protocol server for the [Exfer](https://github.com/ahuman-exfer/ex
 
 ## What it exposes
 
-Seven v0.1 tools — enough for the "Hello World agent flow" of generating an address, simulating a transfer, sending it, and waiting for confirmation:
+Eight tools — enough for the "Hello World agent flow" of generating an address, simulating a transfer, sending it, waiting for confirmation, and being notified the instant a payment arrives:
 
 | Tool | What it does |
 |---|---|
@@ -15,6 +15,7 @@ Seven v0.1 tools — enough for the "Hello World agent flow" of generating an ad
 | `exfer_simulate_transfer` | Dry-run a payment — exact fee + inputs, no broadcast |
 | `exfer_transfer` | Build, sign, broadcast a payment |
 | `exfer_wait_for_tx` | Block until a tx reaches a confirmation depth |
+| `exfer_wait_for_payment` | Block until a payment to an address is seen — sub-second push, no polling |
 | `exfer_payment_uri_encode` | Build a BIP21-style `exfer:` URI |
 | `exfer_payment_uri_decode` | Parse a BIP21-style `exfer:` URI |
 
