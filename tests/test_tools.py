@@ -48,10 +48,14 @@ def test_tool_names_are_exfer_prefixed() -> None:
         assert tool.name.startswith("exfer_"), tool.name
 
 
-def test_v0_1_tool_count_is_seven() -> None:
-    # Adjust if v0.2 lands new tools — the change signals an API surface
-    # bump and the test should be updated alongside the CHANGELOG.
-    assert len(TOOLS) == 7
+def test_tool_count() -> None:
+    # Bump when the tool surface changes — the count is a deliberate
+    # signal that the API surface moved. v0.1 shipped 7; the agent
+    # expansion (instant receipt, identity, HTLC, reputation, names)
+    # brought it to 21. Every tool must have a handler.
+    assert len(TOOLS) == 21
+    assert len(HANDLERS) == len(TOOLS)
+    assert {t.name for t in TOOLS} == set(HANDLERS)
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +221,7 @@ async def test_wait_for_tx_timeout_renders_friendly_text(
     client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
 ) -> None:
     mock_walletd.post("/").mock(return_value=rpc_err(-32040, "wait_for_tx: timed out"))
-    out = await HANDLERS["exfer_wait_for_tx"](
-        client, {"tx_id": TX_ID, "timeout_secs": 10}, config
-    )
+    out = await HANDLERS["exfer_wait_for_tx"](client, {"tx_id": TX_ID, "timeout_secs": 10}, config)
     msg = out[0].text
     assert "not a terminal failure" in msg.lower()
     assert "-32040" in msg

@@ -49,7 +49,7 @@ class Config:
         if not url:
             raise ConfigError(
                 "WALLETD_URL is unset — set it on the MCP host's `env` block "
-                "(e.g. `\"WALLETD_URL\": \"http://127.0.0.1:7448\"`)"
+                '(e.g. `"WALLETD_URL": "http://127.0.0.1:7448"`)'
             )
         if not token:
             raise ConfigError(
@@ -89,9 +89,7 @@ class Config:
                 f"EXFER_MCP_HTTPX_TIMEOUT must be a number, got {timeout_str!r}"
             ) from exc
         if httpx_timeout <= 0:
-            raise ConfigError(
-                f"EXFER_MCP_HTTPX_TIMEOUT must be positive, got {httpx_timeout}"
-            )
+            raise ConfigError(f"EXFER_MCP_HTTPX_TIMEOUT must be positive, got {httpx_timeout}")
 
         return cls(
             walletd_url=url,

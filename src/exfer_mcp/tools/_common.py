@@ -56,8 +56,7 @@ def render_error(exc: Exception) -> list[mcp_types.TextContent]:
     """
     if isinstance(exc, InsufficientBalanceError):
         flag = (
-            " (some UTXOs are reserved by pending transfers; retry after they "
-            "confirm)"
+            " (some UTXOs are reserved by pending transfers; retry after they confirm)"
             if exc.in_flight_reserved
             else ""
         )

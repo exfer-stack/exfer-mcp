@@ -16,30 +16,6 @@ from .address import (
     generate_address,
     get_balance,
 )
-from .payment_uri import (
-    PAYMENT_URI_DECODE_TOOL,
-    PAYMENT_URI_ENCODE_TOOL,
-    payment_uri_decode,
-    payment_uri_encode,
-)
-from .transfer import (
-    SIMULATE_TRANSFER_TOOL,
-    TRANSFER_TOOL,
-    simulate_transfer,
-    transfer,
-)
-from .wait import (
-    WAIT_FOR_PAYMENT_TOOL,
-    WAIT_FOR_TX_TOOL,
-    wait_for_payment,
-    wait_for_tx,
-)
-from .signing import (
-    SIGN_MESSAGE_TOOL,
-    VERIFY_MESSAGE_TOOL,
-    sign_message,
-    verify_message,
-)
 from .htlc import (
     HTLC_CLAIM_TOOL,
     HTLC_LIST_TOOL,
@@ -52,6 +28,20 @@ from .htlc import (
     htlc_reclaim,
     htlc_status,
 )
+from .naming import (
+    NAME_CLAIM_TOOL,
+    NAME_SCRIPT_TOOL,
+    RESOLVE_NAME_TOOL,
+    name_claim,
+    name_script,
+    resolve_name,
+)
+from .payment_uri import (
+    PAYMENT_URI_DECODE_TOOL,
+    PAYMENT_URI_ENCODE_TOOL,
+    payment_uri_decode,
+    payment_uri_encode,
+)
 from .reputation import (
     DETECT_IN_CHAIN_SWAPS_TOOL,
     GET_ADDRESS_HISTORY_TOOL,
@@ -60,13 +50,23 @@ from .reputation import (
     get_address_history,
     get_attestation_edges,
 )
-from .naming import (
-    NAME_CLAIM_TOOL,
-    NAME_SCRIPT_TOOL,
-    RESOLVE_NAME_TOOL,
-    name_claim,
-    name_script,
-    resolve_name,
+from .signing import (
+    SIGN_MESSAGE_TOOL,
+    VERIFY_MESSAGE_TOOL,
+    sign_message,
+    verify_message,
+)
+from .transfer import (
+    SIMULATE_TRANSFER_TOOL,
+    TRANSFER_TOOL,
+    simulate_transfer,
+    transfer,
+)
+from .wait import (
+    WAIT_FOR_PAYMENT_TOOL,
+    WAIT_FOR_TX_TOOL,
+    wait_for_payment,
+    wait_for_tx,
 )
 
 __all__ = ["HANDLERS", "TOOLS"]

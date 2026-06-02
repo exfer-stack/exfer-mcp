@@ -42,9 +42,7 @@ def build_server(client: AsyncClient, config: Config) -> Server[None, Any]:
         return TOOLS
 
     @server.call_tool()
-    async def _call_tool(
-        name: str, arguments: dict[str, Any]
-    ) -> list[mcp_types.TextContent]:
+    async def _call_tool(name: str, arguments: dict[str, Any]) -> list[mcp_types.TextContent]:
         handler = HANDLERS.get(name)
         if handler is None:
             # Surface as a typed CallToolResult error via the framework's
@@ -69,9 +67,7 @@ async def _run() -> None:
     if config.walletd_fingerprint is not None:
         client_kwargs["fingerprint"] = config.walletd_fingerprint
 
-    async with AsyncClient(
-        config.walletd_url, config.walletd_token, **client_kwargs
-    ) as client:
+    async with AsyncClient(config.walletd_url, config.walletd_token, **client_kwargs) as client:
         server = build_server(client, config)
         async with stdio_server() as (read_stream, write_stream):
             await server.run(

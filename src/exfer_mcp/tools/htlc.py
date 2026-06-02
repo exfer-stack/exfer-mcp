@@ -199,9 +199,7 @@ async def htlc_status(
 ) -> list[mcp_types.TextContent]:
     del config
     try:
-        result = await client.htlc_status(
-            arguments["lock_tx_id"], arguments.get("output_index", 0)
-        )
+        result = await client.htlc_status(arguments["lock_tx_id"], arguments.get("output_index", 0))
     except Exception as exc:
         return render_error(exc)
     return [json_text(result)]
