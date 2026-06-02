@@ -28,14 +28,6 @@ from .htlc import (
     htlc_reclaim,
     htlc_status,
 )
-from .naming import (
-    NAME_CLAIM_TOOL,
-    NAME_SCRIPT_TOOL,
-    RESOLVE_NAME_TOOL,
-    name_claim,
-    name_script,
-    resolve_name,
-)
 from .payment_uri import (
     PAYMENT_URI_DECODE_TOOL,
     PAYMENT_URI_ENCODE_TOOL,
@@ -96,10 +88,6 @@ TOOLS: list[mcp_types.Tool] = [
     GET_ADDRESS_HISTORY_TOOL,
     GET_ATTESTATION_EDGES_TOOL,
     DETECT_IN_CHAIN_SWAPS_TOOL,
-    # human-readable names
-    RESOLVE_NAME_TOOL,
-    NAME_CLAIM_TOOL,
-    NAME_SCRIPT_TOOL,
 ]
 
 HANDLERS: dict[str, ToolHandler] = {
@@ -121,7 +109,4 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
     GET_ATTESTATION_EDGES_TOOL.name: get_attestation_edges,
     DETECT_IN_CHAIN_SWAPS_TOOL.name: detect_in_chain_swaps,
-    RESOLVE_NAME_TOOL.name: resolve_name,
-    NAME_CLAIM_TOOL.name: name_claim,
-    NAME_SCRIPT_TOOL.name: name_script,
 }

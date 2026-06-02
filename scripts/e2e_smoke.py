@@ -156,9 +156,7 @@ async def t1_mcp_payment_uri_round_trip(ctx: Ctx) -> str:
     if not uri.startswith(f"exfer:{addr}"):
         raise AssertionError(f"uri does not start with the address: {uri!r}")
 
-    decode_result = await ctx.mcp.call_tool(
-        "exfer_payment_uri_decode", {"uri": uri}
-    )
+    decode_result = await ctx.mcp.call_tool("exfer_payment_uri_decode", {"uri": uri})
     if decode_result.isError:
         raise AssertionError(f"decode error: {decode_result.content!r}")
     parsed = json.loads(decode_result.content[0].text)  # type: ignore[union-attr]
@@ -291,9 +289,7 @@ async def t3_real_transfer_and_wait(ctx: Ctx) -> str:
         raise SkipPhase("EXFER_E2E_SPEND != 1; skipping real transfer")
     funded = os.environ.get("EXFER_E2E_FUNDED_ADDR")
     if not funded:
-        raise SkipPhase(
-            "EXFER_E2E_FUNDED_ADDR not set; can't spend without a funded source"
-        )
+        raise SkipPhase("EXFER_E2E_FUNDED_ADDR not set; can't spend without a funded source")
     dest_result = await ctx.mcp.call_tool("exfer_generate_address", {})
     dest = dest_result.content[0].text  # type: ignore[union-attr]
 
@@ -317,9 +313,7 @@ async def t3_real_transfer_and_wait(ctx: Ctx) -> str:
         "exfer_wait_for_tx", {"tx_id": tx_id, "timeout_secs": 120}
     )
     if wait_result.isError:
-        raise AssertionError(
-            f"wait_for_tx failed: {wait_result.content!r} (tx_id {tx_id})"
-        )
+        raise AssertionError(f"wait_for_tx failed: {wait_result.content!r} (tx_id {tx_id})")
     return f"transferred 1000 exfers, confirmed: tx {tx_id[:12]}…"
 
 
@@ -344,7 +338,9 @@ PHASES: list[Phase] = [
         t2_htlc_lookup_by_hashlock_finds_faucet_task,
         tier=2,
     ),
-    Phase("T2 get_address_history via walletd proxy", t2_get_address_history_via_walletd_proxy, tier=2),
+    Phase(
+        "T2 get_address_history via walletd proxy", t2_get_address_history_via_walletd_proxy, tier=2
+    ),
     Phase("T2 contract_stats via walletd proxy", t2_contract_stats_via_walletd_proxy, tier=2),
     Phase("T3 transfer + wait_for_tx (opt-in)", t3_real_transfer_and_wait, tier=3),
 ]
@@ -457,19 +453,12 @@ async def main() -> int:
             # T2 phases (other than the gate itself) are skipped
             # wholesale if the gate phase couldn't prove indexer was
             # caught up.
-            if (
-                phase.tier == 2
-                and indexer_gate_failed
-                and phase.name != "T2 indexer caught up"
-            ):
+            if phase.tier == 2 and indexer_gate_failed and phase.name != "T2 indexer caught up":
                 print(f"  SKIP  [T2] {phase.name}  gated by previous skip")
                 results[phase.name] = "SKIP"
                 continue
             await run_phase(ctx, phase, results)
-            if (
-                phase.name == "T2 indexer caught up"
-                and results[phase.name] == "SKIP"
-            ):
+            if phase.name == "T2 indexer caught up" and results[phase.name] == "SKIP":
                 indexer_gate_failed = True
 
     print()

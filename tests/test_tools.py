@@ -51,9 +51,10 @@ def test_tool_names_are_exfer_prefixed() -> None:
 def test_tool_count() -> None:
     # Bump when the tool surface changes — the count is a deliberate
     # signal that the API surface moved. v0.1 shipped 7; the agent
-    # expansion (instant receipt, identity, HTLC, reputation, names)
-    # brought it to 21. Every tool must have a handler.
-    assert len(TOOLS) == 21
+    # expansion (instant receipt, identity, HTLC, reputation) brought it
+    # to 18 (naming was removed pending a datum-based redo). Every tool
+    # must have a handler.
+    assert len(TOOLS) == 18
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
