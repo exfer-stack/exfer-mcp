@@ -118,6 +118,16 @@ TRANSFER_TOOL = mcp_types.Tool(
                 "type": "integer",
                 "minimum": 0,
             },
+            "datum": {
+                "type": "string",
+                "description": (
+                    "Optional hex (<= 4096 bytes): a generic, app-defined "
+                    "on-chain blob attached to the payment (e.g. a receipt or "
+                    "reference). Meaning is the application's; read it back "
+                    "via exfer_get_transaction (outputs[].datum)."
+                ),
+                "pattern": "^([0-9a-f]{2})*$",
+            },
         },
         "required": ["from_address", "to_address", "amount"],
         "additionalProperties": False,
@@ -138,6 +148,8 @@ async def transfer(
     }
     if "fee" in arguments:
         kwargs["fee"] = arguments["fee"]
+    if "datum" in arguments:
+        kwargs["datum"] = arguments["datum"]
     try:
         result = await client.transfer(**kwargs)
     except Exception as exc:
