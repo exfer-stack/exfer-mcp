@@ -52,9 +52,10 @@ def test_tool_count() -> None:
     # Bump when the tool surface changes — the count is a deliberate
     # signal that the API surface moved. v0.1 shipped 7; the agent
     # expansion (instant receipt, identity, HTLC, reputation) brought it
-    # to 18 (naming was removed pending a datum-based redo). Every tool
-    # must have a handler.
-    assert len(TOOLS) == 18
+    # to 18 (naming was removed pending a datum-based redo); the
+    # EXFER-QUOTE pair (quote_issue + quote_verify) brought it to 20.
+    # Every tool must have a handler.
+    assert len(TOOLS) == 20
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
@@ -193,6 +194,119 @@ async def test_transfer_insufficient_balance_renders_plain_english(
     msg = out[0].text
     assert "insufficient balance" in msg.lower()
     assert "-32031" in msg
+
+
+# ---------------------------------------------------------------------------
+# quote_issue / quote_verify (EXFER-QUOTE)
+# ---------------------------------------------------------------------------
+
+
+async def test_quote_issue_round_trips_walletd_response(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    quote = {
+        "version": 1,
+        "quote_id": "ab" * 16,
+        "currency": "USD",
+        "amount_minor": 1299,
+        "rate_exfers_per_unit": 1000,
+        "exfer_amount": 1_299_000,
+        "payee_pubkey": "cd" * 32,
+        "issued_at": 1_733_600_000,
+        "expires_at": 1_733_600_600,
+        "memo": "coffee",
+        "signer_pubkey": "ef" * 32,
+        "signature": "ab" * 64,
+    }
+    walletd_resp = {
+        "quote": quote,
+        "signature": "ab" * 64,
+        "signer_address": ADDR,
+        "payee_address": ADDR2,
+        "genesis_block_id": BLOCK_HASH,
+        "image": "deadbeef",
+        "htlc_preimage": "11" * 32,
+        "htlc_hash_lock": "22" * 32,
+    }
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(walletd_resp))
+    out = await HANDLERS["exfer_quote_issue"](
+        client,
+        {
+            "address": ADDR,
+            "payee_pubkey": "cd" * 32,
+            "currency": "USD",
+            "amount_minor": 1299,
+            "rate_exfers_per_unit": 1000,
+            "exfer_amount": 1_299_000,
+            "ttl_secs": 600,
+            "memo": "coffee",
+        },
+        config,
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == walletd_resp
+    # optional args are forwarded; absent ones are omitted from the RPC params
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"]["address"] == ADDR
+    assert body["params"]["ttl_secs"] == 600
+    assert body["params"]["memo"] == "coffee"
+    assert "payer_pubkey" not in body["params"]
+    assert "quote_id" not in body["params"]
+
+
+async def test_quote_issue_scope_denied_renders_error(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    # A Read-scoped token hitting the Spend-posture issue RPC must fail at
+    # walletd (-32001) and be surfaced by render_error — there is no
+    # MCP-side capability check by design.
+    mock_walletd.post("/").mock(return_value=rpc_err(-32001, "insufficient scope: need Spend"))
+    out = await HANDLERS["exfer_quote_issue"](
+        client,
+        {
+            "address": ADDR,
+            "payee_pubkey": "cd" * 32,
+            "currency": "USD",
+            "amount_minor": 1299,
+            "rate_exfers_per_unit": 1000,
+            "exfer_amount": 1_299_000,
+            "ttl_secs": 600,
+        },
+        config,
+    )
+    assert "-32001" in out[0].text
+
+
+async def test_quote_verify_round_trips_walletd_response(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    quote = {
+        "version": 1,
+        "quote_id": "ab" * 16,
+        "currency": "USD",
+        "amount_minor": 1299,
+        "rate_exfers_per_unit": 1000,
+        "exfer_amount": 1_299_000,
+        "payee_pubkey": "cd" * 32,
+        "issued_at": 1_733_600_000,
+        "expires_at": 1_733_600_600,
+        "memo": "coffee",
+        "signer_pubkey": "ef" * 32,
+        "signature": "ab" * 64,
+    }
+    walletd_resp = {
+        "valid": True,
+        "signer_address": ADDR,
+        "payee_address": ADDR2,
+        "genesis_block_id": BLOCK_HASH,
+    }
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(walletd_resp))
+    out = await HANDLERS["exfer_quote_verify"](client, {"quote": quote}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed == walletd_resp
+    # the quote object is forwarded verbatim under the `quote` param
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"]["quote"] == quote
 
 
 # ---------------------------------------------------------------------------

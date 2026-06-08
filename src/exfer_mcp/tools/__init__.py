@@ -34,6 +34,12 @@ from .payment_uri import (
     payment_uri_decode,
     payment_uri_encode,
 )
+from .quote import (
+    QUOTE_ISSUE_TOOL,
+    QUOTE_VERIFY_TOOL,
+    quote_issue,
+    quote_verify,
+)
 from .reputation import (
     DETECT_IN_CHAIN_SWAPS_TOOL,
     GET_ADDRESS_HISTORY_TOOL,
@@ -71,10 +77,13 @@ TOOLS: list[mcp_types.Tool] = [
     GET_BALANCE_TOOL,
     SIMULATE_TRANSFER_TOOL,
     TRANSFER_TOOL,
+    # signed price credential (EXFER-QUOTE)
+    QUOTE_ISSUE_TOOL,
     WAIT_FOR_TX_TOOL,
     WAIT_FOR_PAYMENT_TOOL,
     PAYMENT_URI_ENCODE_TOOL,
     PAYMENT_URI_DECODE_TOOL,
+    QUOTE_VERIFY_TOOL,
     # identity / proof-of-control
     SIGN_MESSAGE_TOOL,
     VERIFY_MESSAGE_TOOL,
@@ -95,6 +104,8 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_BALANCE_TOOL.name: get_balance,
     SIMULATE_TRANSFER_TOOL.name: simulate_transfer,
     TRANSFER_TOOL.name: transfer,
+    QUOTE_ISSUE_TOOL.name: quote_issue,
+    QUOTE_VERIFY_TOOL.name: quote_verify,
     WAIT_FOR_TX_TOOL.name: wait_for_tx,
     WAIT_FOR_PAYMENT_TOOL.name: wait_for_payment,
     PAYMENT_URI_ENCODE_TOOL.name: payment_uri_encode,
