@@ -43,6 +43,17 @@ Repository    = "https://github.com/exfer-stack/exfer-mcp"
 "exfer-walletd (Rust daemon)" = "https://github.com/exfer-stack/exfer-walletd"
 "exfer-walletd (Python SDK)"  = "https://github.com/exfer-stack/exfer-py"
 
+# --- TEMPORARY dependency-source override (remove on next exfer-py release) ---
+# The published PyPI exfer-walletd 0.8.0 predates quote_issue / quote_verify
+# (the EXFER-QUOTE tools added here call client.quote_issue / .quote_verify).
+# Pin the SDK to the exfer-py commit that carries them so a clean `uv sync`
+# is reproducible and the quote tools don't AttributeError at runtime. The
+# rev is the feat/quote-rpc head; repoint it to the merge commit (or delete
+# this block and bump the floor) once exfer-py cuts a release with these
+# methods on PyPI.
+[tool.uv.sources]
+exfer-walletd = { git = "https://github.com/exfer-stack/exfer-py.git", rev = "081f2fcf92e4a88f41928c4e6c3f9175a74eaaf7" }
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
