@@ -31,6 +31,7 @@ Lifecycle (all driven from :meth:`WalletdSupervisor.start` /
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import contextlib
 import json
@@ -155,19 +156,129 @@ class WalletdSupervisor:
     def __init__(self, config: ManagedConfig) -> None:
         self._config = config
         self._proc: subprocess.Popen[bytes] | None = None
+        self._init_proc: subprocess.Popen[str] | None = None
         self._log_thread: threading.Thread | None = None
         self._stopped = False
         self._lock = threading.Lock()
         self._port: int | None = None
         self._prev_sigterm: _SignalHandler = None
         self._prev_sigint: _SignalHandler = None
+        # -- lazy (managed, non-blocking) machinery --------------------
+        # Set once start_background() schedules the bring-up task; the
+        # background task resolves _ready_event when walletd answers a
+        # health probe (and records the spend token), or records
+        # _ready_error if bring-up fails. ensure_ready() awaits this.
+        self._ready_event: asyncio.Event | None = None
+        self._ready_error: BaseException | None = None
+        self._token: str | None = None
+        self._bringup_task: asyncio.Task[None] | None = None
+        self._bringup_started = False
 
     @property
     def bind(self) -> str:
-        """The chosen ``host:port`` (only valid after :meth:`start`)."""
+        """The chosen ``host:port`` (only valid after the port is chosen)."""
         if self._port is None:
-            raise RuntimeError("bind not chosen yet; call start() first")
+            raise RuntimeError("bind not chosen yet; call choose_bind()/start() first")
         return f"{self._config.bind_host}:{self._port}"
+
+    # -- lazy / non-blocking startup (managed mode) ----------------------
+
+    def choose_bind(self) -> str:
+        """Pick the loopback bind SYNCHRONOUSLY and return the walletd URL.
+
+        Instant — only finds a free port (no init, no spawn, no probe). The
+        URL is known immediately so the effective Config (and thus the MCP
+        handshake + list_tools) can be built with ZERO wait, while the
+        actual walletd boot happens later in the background.
+
+        Idempotent: a second call returns the already-chosen URL.
+        """
+        if self._port is None:
+            cfg = self._config
+            self._port = find_free_loopback_port(cfg.bind_port, cfg.bind_host)
+        return f"http://{self.bind}"
+
+    def start_background(self) -> str:
+        """Choose the bind, then SPAWN walletd in the background; return the URL.
+
+        Does NOT wait for readiness — schedules an asyncio task that runs
+        init-if-needed → spawn → poll-health → read-token and sets the
+        readiness event when walletd answers. The caller (the MCP server)
+        can start serving immediately; the handshake never blocks on this.
+
+        Must be called from within a running event loop. Idempotent: a
+        repeat call is a no-op and returns the same URL (guards against
+        double-start, mirroring the sync :meth:`start`).
+        """
+        url = self.choose_bind()
+        if self._bringup_started:
+            return url
+        self._bringup_started = True
+
+        self._install_signal_handlers()
+        atexit.register(self.stop)
+
+        self._ready_event = asyncio.Event()
+        _eprint(f"[walletd] starting (managed, datadir={self._config.datadir})...")
+        self._bringup_task = asyncio.create_task(self._bring_up(url))
+        return url
+
+    async def _bring_up(self, url: str) -> None:
+        """Background task: init (if needed) → spawn → health-poll → token.
+
+        Runs the blocking steps (Argon2 keystore init via subprocess.run,
+        the spawn, and the health poll) in a worker thread so the event
+        loop — and therefore the MCP handshake / list_tools — stays
+        responsive. Records the spend token + sets the ready event on
+        success; records the error on failure (ensure_ready re-raises it).
+        """
+        assert self._ready_event is not None
+        try:
+            token = await asyncio.to_thread(self._bring_up_blocking, url)
+        except Exception as exc:
+            # Record every failure (ConfigError on timeout/spawn-fail, or an
+            # unexpected error) so ensure_ready() can re-raise it as a clear
+            # tool error instead of hanging. CancelledError (a BaseException)
+            # is deliberately NOT caught — it propagates to cancel the task.
+            self._ready_error = exc
+        else:
+            self._token = token
+            _eprint(f"[walletd] ready at {url} (managed)")
+        finally:
+            self._ready_event.set()
+
+    def _bring_up_blocking(self, url: str) -> str:
+        """The synchronous bring-up body (run off-loop via a worker thread)."""
+        # If stop() already ran (server exited before ready), don't spawn.
+        with self._lock:
+            if self._stopped:
+                raise ConfigError("managed walletd bring-up aborted: server is shutting down")
+        self._init_keystore_if_needed()
+        # Re-check after the (potentially slow) init: a teardown may have
+        # landed while we were unlocking the keystore.
+        with self._lock:
+            if self._stopped:
+                raise ConfigError("managed walletd bring-up aborted: server is shutting down")
+        self._spawn(self.bind)
+        return self._wait_until_ready(url)
+
+    async def ensure_ready(self) -> tuple[str, str]:
+        """Await walletd readiness; return ``(url, token)``. Idempotent.
+
+        Returns immediately once walletd is up; otherwise awaits the
+        in-progress background bring-up. Re-raises the bring-up error
+        (e.g. :class:`~.config.ConfigError` on timeout / spawn failure) so
+        a tool call returns a clear error instead of hanging forever.
+
+        Must be called after :meth:`start_background`.
+        """
+        if self._ready_event is None:
+            raise RuntimeError("ensure_ready() called before start_background()")
+        await self._ready_event.wait()
+        if self._ready_error is not None:
+            raise self._ready_error
+        assert self._token is not None
+        return f"http://{self.bind}", self._token
 
     def start(self) -> tuple[str, str]:
         """Init (if needed), spawn walletd, wait for ready, return (url, token).
@@ -206,28 +317,48 @@ class WalletdSupervisor:
 
         _eprint(f"[walletd] no keystore at {cfg.datadir} — initialising a new seeded wallet")
         env = self._child_env()
+        # Tracked Popen (not subprocess.run) so stop() can terminate the
+        # init-seeded child if the server exits mid-init (the Argon2 keystore
+        # derivation is a 10-20s window). Keeps the "no orphan" guarantee on the
+        # first-run path too.
         try:
-            completed = subprocess.run(
+            proc = subprocess.Popen(
                 [cfg.binary, "--datadir", str(cfg.datadir), "init-seeded"],
                 env=env,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=60,
-                check=False,
             )
         except FileNotFoundError as exc:
             raise ConfigError(
                 f"EXFER_WALLETD_BIN points at a binary that does not exist: {cfg.binary!r}"
             ) from exc
 
-        if completed.returncode != 0:
+        with self._lock:
+            if self._stopped:
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    proc.terminate()
+                raise ConfigError("walletd init aborted: supervisor stopped")
+            self._init_proc = proc
+
+        try:
+            stdout, stderr = proc.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
+            proc.wait()
+            raise ConfigError("walletd init-seeded timed out after 60s") from None
+        finally:
+            with self._lock:
+                self._init_proc = None
+
+        if proc.returncode != 0:
             raise ConfigError(
-                "walletd init-seeded failed "
-                f"(exit {completed.returncode}). stderr:\n{completed.stderr.strip()}"
+                f"walletd init-seeded failed (exit {proc.returncode}). stderr:\n{stderr.strip()}"
             )
 
-        mnemonic = self._extract_mnemonic(completed.stdout)
-        self._announce_mnemonic(mnemonic, completed.stdout)
+        mnemonic = self._extract_mnemonic(stdout)
+        self._announce_mnemonic(mnemonic, stdout)
 
     @staticmethod
     def _extract_mnemonic(stdout: str) -> str | None:
@@ -292,7 +423,7 @@ class WalletdSupervisor:
         argv = self._build_argv(bind)
         _eprint(f"[walletd] spawning: {' '.join(argv)}")
         try:
-            self._proc = subprocess.Popen(
+            proc = subprocess.Popen(
                 argv,
                 env=self._child_env(),
                 stdout=subprocess.PIPE,
@@ -307,9 +438,23 @@ class WalletdSupervisor:
                 f"EXFER_WALLETD_BIN points at a binary that does not exist: {self._config.binary!r}"
             ) from exc
 
-        self._log_thread = threading.Thread(
-            target=self._forward_logs, args=(self._proc,), daemon=True
-        )
+        # Publish the handle under the lock and, if a teardown already
+        # landed (server exited before we got here), kill it right back so
+        # the background spawn never becomes an orphan.
+        with self._lock:
+            stopped = self._stopped
+            self._proc = proc
+        if stopped:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=_TERM_GRACE_SECS)
+            if proc.poll() is None:
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    proc.kill()
+            raise ConfigError("managed walletd bring-up aborted: server is shutting down")
+
+        self._log_thread = threading.Thread(target=self._forward_logs, args=(proc,), daemon=True)
         self._log_thread.start()
 
     @staticmethod
@@ -432,6 +577,17 @@ class WalletdSupervisor:
                 return
             self._stopped = True
             proc = self._proc
+            init_proc = self._init_proc
+
+        # First-run init-seeded child (Argon2 window): terminate it too so a
+        # stop mid-init leaves no lingering process.
+        if init_proc is not None and init_proc.poll() is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                init_proc.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                init_proc.wait(timeout=_TERM_GRACE_SECS)
+            with contextlib.suppress(ProcessLookupError, OSError):
+                init_proc.kill()
 
         if proc is None or proc.poll() is not None:
             return
