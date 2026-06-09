@@ -53,9 +53,10 @@ def test_tool_count() -> None:
     # signal that the API surface moved. v0.1 shipped 7; the agent
     # expansion (instant receipt, identity, HTLC, reputation) brought it
     # to 18 (naming was removed pending a datum-based redo); the
-    # EXFER-QUOTE pair (quote_issue + quote_verify) brought it to 20.
+    # EXFER-QUOTE pair (quote_issue + quote_verify) brought it to 20; the
+    # ergonomics pass (list_addresses + get_block_height) brought it to 22.
     # Every tool must have a handler.
-    assert len(TOOLS) == 20
+    assert len(TOOLS) == 22
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
@@ -65,13 +66,38 @@ def test_tool_count() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_generate_address(
+async def test_generate_address_returns_pubkey(
     client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
 ) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32, "index": 7})
+    )
     out = await HANDLERS["exfer_generate_address"](client, {}, config)
     assert len(out) == 1
-    assert out[0].text == ADDR
+    parsed = json.loads(out[0].text)
+    assert parsed == {"address": ADDR, "pubkey": "de" * 32, "index": 7}
+
+
+async def test_list_addresses_returns_records(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    records = [
+        {"address": ADDR, "index": 0, "label": "default"},
+        {"address": ADDR2, "index": 1, "imported": True},
+    ]
+    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": records}))
+    out = await HANDLERS["exfer_list_addresses"](client, {}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed == records
+
+
+async def test_get_block_height_returns_height(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 577429, "block_id": BLOCK_HASH}))
+    out = await HANDLERS["exfer_get_block_height"](client, {}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed == {"height": 577429, "block_id": BLOCK_HASH}
 
 
 async def test_get_balance(

@@ -13,8 +13,12 @@ from ._common import ToolHandler
 from .address import (
     GENERATE_ADDRESS_TOOL,
     GET_BALANCE_TOOL,
+    GET_BLOCK_HEIGHT_TOOL,
+    LIST_ADDRESSES_TOOL,
     generate_address,
     get_balance,
+    get_block_height,
+    list_addresses,
 )
 from .htlc import (
     HTLC_CLAIM_TOOL,
@@ -74,7 +78,9 @@ __all__ = ["HANDLERS", "TOOLS"]
 # above spend tools — encouraging "simulate, then transfer".
 TOOLS: list[mcp_types.Tool] = [
     GENERATE_ADDRESS_TOOL,
+    LIST_ADDRESSES_TOOL,
     GET_BALANCE_TOOL,
+    GET_BLOCK_HEIGHT_TOOL,
     SIMULATE_TRANSFER_TOOL,
     TRANSFER_TOOL,
     # signed price credential (EXFER-QUOTE)
@@ -101,7 +107,9 @@ TOOLS: list[mcp_types.Tool] = [
 
 HANDLERS: dict[str, ToolHandler] = {
     GENERATE_ADDRESS_TOOL.name: generate_address,
+    LIST_ADDRESSES_TOOL.name: list_addresses,
     GET_BALANCE_TOOL.name: get_balance,
+    GET_BLOCK_HEIGHT_TOOL.name: get_block_height,
     SIMULATE_TRANSFER_TOOL.name: simulate_transfer,
     TRANSFER_TOOL.name: transfer,
     QUOTE_ISSUE_TOOL.name: quote_issue,
