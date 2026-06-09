@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Managed-walletd mode.** exfer-mcp can now run self-contained: when
+  `WALLETD_URL` is **unset**, it spawns and supervises its own
+  `exfer-walletd` subprocess against the project's public mainnet
+  reference node + indexer (overridable), instead of requiring an
+  externally-run walletd. Set only `WALLETD_KEYSTORE_PASSPHRASE` (and
+  `EXFER_WALLETD_BIN` if walletd isn't on `PATH`) and it "just works".
+  On first run it initialises a seeded keystore and surfaces the 24-word
+  recovery phrase to stderr. The managed walletd binds loopback only,
+  picks a free port if the default 7448 is busy, and is terminated on
+  every MCP exit path (atexit + SIGINT/SIGTERM) — no orphaned processes.
+  Setting `WALLETD_URL` keeps the original **external** mode unchanged.
+  New env: `WALLETD_KEYSTORE_PASSPHRASE`, `EXFER_WALLETD_BIN`,
+  `EXFER_NODE_RPC`, `EXFER_INDEXER_RPC`, `WALLETD_DATADIR`,
+  `EXFER_WALLETD_BIND`.
+
 ## 0.1.0
 
 Initial release. Seven tools wrapping the `exfer-walletd` v1.9 Read +
