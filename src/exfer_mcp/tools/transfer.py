@@ -60,6 +60,17 @@ SIMULATE_TRANSFER_TOOL = mcp_types.Tool(
                 ),
                 "minimum": 0,
             },
+            "datum": {
+                "type": "string",
+                "description": (
+                    "Optional hex (<= 4096 bytes, even length): the same "
+                    "on-chain datum the real `exfer_transfer` would attach "
+                    "(e.g. a quote_id for an honor settlement). Pass it here "
+                    "so the dry-run counts the datum bytes toward size/fee and "
+                    "matches the real transfer exactly."
+                ),
+                "pattern": "^([0-9a-f]{2})*$",
+            },
         },
         "required": ["from_address", "to_address", "amount"],
         "additionalProperties": False,
@@ -82,6 +93,8 @@ async def simulate_transfer(
         kwargs["fee_rate"] = arguments["fee_rate"]
     elif config.default_fee_rate is not None:
         kwargs["fee_rate"] = config.default_fee_rate
+    if "datum" in arguments:
+        kwargs["datum"] = arguments["datum"]
 
     try:
         result = await client.simulate_transfer(**kwargs)

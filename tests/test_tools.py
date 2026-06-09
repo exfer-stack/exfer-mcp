@@ -54,9 +54,11 @@ def test_tool_count() -> None:
     # expansion (instant receipt, identity, HTLC, reputation) brought it
     # to 18 (naming was removed pending a datum-based redo); the
     # EXFER-QUOTE pair (quote_issue + quote_verify) brought it to 20; the
-    # ergonomics pass (list_addresses + get_block_height) brought it to 22.
+    # ergonomics pass (list_addresses + get_block_height) brought it to 22;
+    # the honor read-back pair (get_output_datum +
+    # find_settlements_by_quote_id) brought it to 24.
     # Every tool must have a handler.
-    assert len(TOOLS) == 22
+    assert len(TOOLS) == 24
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
@@ -398,3 +400,148 @@ async def test_payment_uri_decode_returns_json(
     parsed = json.loads(out[0].text)
     assert parsed["address"] == ADDR
     assert parsed["amount"] == 100_000_000
+
+
+# ---------------------------------------------------------------------------
+# simulate_transfer with datum (honor settlement dry-run parity)
+# ---------------------------------------------------------------------------
+
+
+async def test_simulate_transfer_forwards_datum(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    # A honor settlement carries the 16-byte quote_id as an inline datum;
+    # the dry-run must forward those bytes so size/fee match the real
+    # transfer (245 bytes with a 16-byte datum vs 227 without).
+    quote_datum = "ab" * 16
+    walletd_resp = {
+        "size": 245,
+        "fee": 1_000,
+        "fee_rate": 4,
+        "inputs": [{"tx_id": TX_ID, "output_index": 1, "value": 100_000}],
+        "outputs": [{"to": ADDR2, "amount": 50_000}],
+        "total_in": 100_000,
+        "total_out": 50_000,
+        "change": 49_000,
+        "built_at_height": 100,
+    }
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(walletd_resp))
+    out = await HANDLERS["exfer_simulate_transfer"](
+        client,
+        {
+            "from_address": ADDR,
+            "to_address": ADDR2,
+            "amount": 50_000,
+            "fee_rate": 4,
+            "datum": quote_datum,
+        },
+        config,
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == walletd_resp
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"]["datum"] == quote_datum
+
+
+async def test_simulate_transfer_omits_datum_when_absent(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "size": 227,
+                "fee": 1_000,
+                "fee_rate": 4,
+                "inputs": [],
+                "outputs": [{"to": ADDR2, "amount": 50_000}],
+                "total_in": 100_000,
+                "total_out": 50_000,
+                "change": 49_000,
+                "built_at_height": 100,
+            }
+        )
+    )
+    await HANDLERS["exfer_simulate_transfer"](
+        client,
+        {"from_address": ADDR, "to_address": ADDR2, "amount": 50_000, "fee_rate": 4},
+        config,
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert "datum" not in body["params"]
+
+
+# ---------------------------------------------------------------------------
+# get_output_datum / find_settlements_by_quote_id (honor read-back)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_output_datum_returns_quote_id(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    quote_id = "ab" * 16
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"quote_id": quote_id, "unhonorable": False})
+    )
+    out = await HANDLERS["exfer_get_output_datum"](
+        client, {"tx_id": TX_ID, "output_index": 0}, config
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == {"quote_id": quote_id, "unhonorable": False}
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "get_output_datum"
+    assert body["params"] == {"tx_id": TX_ID, "output_index": 0}
+
+
+async def test_get_output_datum_unhonorable_passthrough(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    # A datum_hash-only output: bytes never published inline.
+    mock_walletd.post("/").mock(return_value=rpc_ok({"quote_id": None, "unhonorable": True}))
+    out = await HANDLERS["exfer_get_output_datum"](
+        client, {"tx_id": TX_ID, "output_index": 2}, config
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == {"quote_id": None, "unhonorable": True}
+
+
+async def test_get_output_datum_indexer_not_configured(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_err(-32050, "indexer not configured: start walletd with --indexer-rpc")
+    )
+    out = await HANDLERS["exfer_get_output_datum"](
+        client, {"tx_id": TX_ID, "output_index": 0}, config
+    )
+    assert "indexer" in out[0].text.lower()
+    assert "-32050" in out[0].text
+
+
+async def test_find_settlements_by_quote_id_returns_outpoints(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    quote_id = "cd" * 16
+    settlements = [
+        {"tx_id": TX_ID, "output_index": 0},
+        {"tx_id": "ff" * 32, "output_index": 3},
+    ]
+    route = mock_walletd.post("/").mock(return_value=rpc_ok({"settlements": settlements}))
+    out = await HANDLERS["exfer_find_settlements_by_quote_id"](
+        client, {"quote_id": quote_id}, config
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == {"settlements": settlements}
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "find_settlements_by_quote_id"
+    assert body["params"] == {"quote_id": quote_id}
+
+
+async def test_find_settlements_by_quote_id_empty(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"settlements": []}))
+    out = await HANDLERS["exfer_find_settlements_by_quote_id"](
+        client, {"quote_id": "cd" * 16}, config
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed == {"settlements": []}

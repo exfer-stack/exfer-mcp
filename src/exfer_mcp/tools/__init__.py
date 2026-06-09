@@ -20,6 +20,12 @@ from .address import (
     get_block_height,
     list_addresses,
 )
+from .honor import (
+    FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
+    GET_OUTPUT_DATUM_TOOL,
+    find_settlements_by_quote_id,
+    get_output_datum,
+)
 from .htlc import (
     HTLC_CLAIM_TOOL,
     HTLC_LIST_TOOL,
@@ -103,6 +109,9 @@ TOOLS: list[mcp_types.Tool] = [
     GET_ADDRESS_HISTORY_TOOL,
     GET_ATTESTATION_EDGES_TOOL,
     DETECT_IN_CHAIN_SWAPS_TOOL,
+    # honor read-back (EXFER-QUOTE settlement verify / reverse-lookup)
+    GET_OUTPUT_DATUM_TOOL,
+    FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
 ]
 
 HANDLERS: dict[str, ToolHandler] = {
@@ -128,4 +137,6 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
     GET_ATTESTATION_EDGES_TOOL.name: get_attestation_edges,
     DETECT_IN_CHAIN_SWAPS_TOOL.name: detect_in_chain_swaps,
+    GET_OUTPUT_DATUM_TOOL.name: get_output_datum,
+    FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL.name: find_settlements_by_quote_id,
 }
