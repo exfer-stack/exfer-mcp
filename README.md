@@ -2,7 +2,7 @@
 
 Model Context Protocol server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain. Gives an AI agent (Claude Desktop, Claude Code, any MCP-aware host) typed, direct access to an [`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd) hot wallet.
 
-> ⚠️ **This is a hot wallet.** Anything that can talk to this MCP server can spend funds — there are no per-period caps, no human-approval gates, no rate limits beyond walletd's own. Until walletd ships the v1.10 allowance ledger, run `exfer-mcp` only against accounts you would be okay losing in full.
+> **Warning — this is a hot wallet.** Anything that can talk to this MCP server can spend funds — there are no per-period caps, no human-approval gates, no rate limits beyond walletd's own. Until walletd ships the v1.10 allowance ledger, run `exfer-mcp` only against accounts you would be okay losing in full.
 
 ## What it exposes
 
@@ -101,7 +101,7 @@ Leave `WALLETD_URL` **unset**. exfer-mcp then spawns its own walletd against the
 
 On first run, the managed wallet has no keystore, so exfer-mcp initialises a fresh **seeded** one and prints the 24-word recovery phrase **prominently to stderr** (the MCP host surfaces stderr to you). That phrase is the **only** backup for the funds in this wallet — write it down.
 
-> ⚠️ **The managed wallet is a HOT WALLET.** Anything that can reach this MCP server can spend its funds (see [Safety](#safety)). The keystore + scoped bearer tokens live under `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) and persist across restarts, so the phrase is shown **once** — back it up the first time.
+> **Warning — the managed wallet is a hot wallet.** Anything that can reach this MCP server can spend its funds (see [Safety](#safety)). The keystore + scoped bearer tokens live under `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) and persist across restarts, so the phrase is shown **once** — back it up the first time.
 
 Managed mode is **lazy / non-blocking** — the MCP handshake is instant, so the host (codex / Claude) never appears frozen on startup:
 
@@ -226,15 +226,15 @@ Cursor, Cline, Continue.dev, and most other MCP-aware hosts accept the same `com
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `WALLETD_URL` | ✓ (set → external) | — | walletd base URL |
-| `WALLETD_AUTH_TOKEN` | ✓ | — | walletd bearer token |
+| `WALLETD_URL` | yes (set → external) | — | walletd base URL |
+| `WALLETD_AUTH_TOKEN` | yes | — | walletd bearer token |
 | `WALLETD_FINGERPRINT` | only for `https://` with a self-signed cert | — | SHA-256 of walletd's TLS cert (`sha256:<hex>`) |
 
 ### Managed mode (`WALLETD_URL` unset)
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `WALLETD_KEYSTORE_PASSPHRASE` | ✓ | — | Passphrase to unlock (and, on first run, create) the managed wallet keystore. **Required in managed mode.** |
+| `WALLETD_KEYSTORE_PASSPHRASE` | yes | — | Passphrase to unlock (and, on first run, create) the managed wallet keystore. **Required in managed mode.** |
 | `EXFER_WALLETD_BIN` | only if `exfer-walletd` isn't on `PATH` | auto-detect `exfer-walletd` on `PATH` | Full path to the walletd binary |
 | `EXFER_NODE_RPC` | | `http://64.176.231.198:9334,http://89.127.232.155:9334` | Upstream Exfer node(s) — the project's public mainnet **reference node + a backup**, comma-separated. walletd round-robins and fails over across them. |
 | `EXFER_INDEXER_RPC` | | `http://64.176.231.198:9335` | The project's public mainnet **indexer**, for observability queries that need data outside this wallet's own keys. Set to an **empty string** to disable indexer delegation. |
@@ -270,7 +270,7 @@ The simulate-first pattern means the agent always knows the cost before committi
 ## Coming soon
 
 - **`.mcpb` desktop bundle** — Anthropic's one-click `.mcpb` install format for Claude Desktop, with the env vars surfaced as a form at install time.
-- **v0.2 tools** — HTLC trio (`exfer_htlc_lock` / `exfer_htlc_claim` / `exfer_htlc_reclaim`), `exfer_htlc_status`, attestation queries (`exfer_get_attestation_edges`).
+- **PyPI release** — a `uvx exfer-mcp` / `pip install exfer-mcp` one-liner, once the `exfer-walletd` client is published to PyPI.
 - **MCP directory** — submission to Anthropic's curated MCP directory + community directories.
 
 ## Development
