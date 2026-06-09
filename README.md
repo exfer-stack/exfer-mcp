@@ -21,6 +21,72 @@ Eight tools — enough for the "Hello World agent flow" of generating an address
 
 HTLC swap tools, attestation / reputation lookups, and `htlc_list` are out of v0.1 scope — tracked for v0.2.
 
+## Two ways to run
+
+`exfer-mcp` talks to an `exfer-walletd` hot wallet. You can either point it at a walletd **you** run, or let it spawn and supervise **its own** — like the browser MCP manages its own headless browser. The mode is selected automatically by whether `WALLETD_URL` is set:
+
+| | **External** | **Managed (zero-setup)** |
+|---|---|---|
+| Selected when | `WALLETD_URL` **set** | `WALLETD_URL` **unset** |
+| Who runs walletd | you, separately | exfer-mcp spawns + supervises it |
+| Required env | `WALLETD_URL` + `WALLETD_AUTH_TOKEN` | `WALLETD_KEYSTORE_PASSPHRASE` (+ `EXFER_WALLETD_BIN` if not on `PATH`) |
+| Node / indexer | whatever your walletd uses | the project's public mainnet node + indexer (overridable) |
+| Lifecycle | independent of the MCP | tied to the MCP — spawned on start, killed on exit (no orphans) |
+
+### 1. External walletd (original behaviour)
+
+You already run `exfer-walletd` somewhere; exfer-mcp just connects to it. Set `WALLETD_URL` + `WALLETD_AUTH_TOKEN` and (for `https://` with a self-signed cert) `WALLETD_FINGERPRINT`. Nothing about this path changed — see [Configure (Claude Desktop)](#configure-claude-desktop) below.
+
+```jsonc
+// codex / Claude config — EXTERNAL mode
+{
+  "mcpServers": {
+    "exfer": {
+      "command": "uvx",
+      "args": ["exfer-mcp"],
+      "env": {
+        "WALLETD_URL": "http://127.0.0.1:7448",
+        "WALLETD_AUTH_TOKEN": "<paste your walletd token here>"
+      }
+    }
+  }
+}
+```
+
+### 2. Managed (zero-setup)
+
+Leave `WALLETD_URL` **unset**. exfer-mcp then spawns its own walletd against the project's **public mainnet reference node + indexer** and wires the rest of the server to it automatically. You only have to provide a keystore passphrase (and a path to the binary if `exfer-walletd` isn't on `PATH`):
+
+```jsonc
+// codex / Claude config — MANAGED mode (zero-setup)
+{
+  "mcpServers": {
+    "exfer": {
+      "command": "uvx",
+      "args": ["exfer-mcp"],
+      "env": {
+        // No WALLETD_URL → managed mode.
+        "WALLETD_KEYSTORE_PASSPHRASE": "<a strong passphrase for the managed wallet>",
+        // Only needed if exfer-walletd is not on PATH:
+        "EXFER_WALLETD_BIN": "/path/to/exfer-walletd"
+      }
+    }
+  }
+}
+```
+
+On first run, the managed wallet has no keystore, so exfer-mcp initialises a fresh **seeded** one and prints the 24-word recovery phrase **prominently to stderr** (the MCP host surfaces stderr to you). That phrase is the **only** backup for the funds in this wallet — write it down.
+
+> ⚠️ **The managed wallet is a HOT WALLET.** Anything that can reach this MCP server can spend its funds (see [Safety](#safety)). The keystore + scoped bearer tokens live under `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) and persist across restarts, so the phrase is shown **once** — back it up the first time.
+
+What managed mode does for you, in order:
+
+1. Picks a loopback bind — `127.0.0.1:7448` by default, or a free loopback port if 7448 is busy (so a managed walletd never collides with a walletd you run yourself).
+2. Initialises a seeded keystore under `WALLETD_DATADIR` if one isn't there yet, surfacing the recovery phrase; reuses the existing keystore otherwise.
+3. Spawns `exfer-walletd --datadir … --bind … --node-rpc … --indexer-rpc …` with your passphrase in its env, forwarding its logs to the MCP's stderr with a `[walletd]` prefix.
+4. Waits (up to ~30 s) until walletd answers a `get_block_height` health probe, reads the spend-scope bearer token, and points the rest of exfer-mcp at the spawned instance.
+5. On shutdown (clean exit, `SIGINT`, or `SIGTERM`) terminates walletd — `SIGTERM`, then `SIGKILL` after a grace period. **No orphaned walletd processes.**
+
 ## Install
 
 ### Recommended — `uvx` (zero global install)
@@ -130,11 +196,31 @@ Cursor, Cline, Continue.dev, and most other MCP-aware hosts accept the same `com
 
 ## Environment
 
+**`WALLETD_URL` is the mode switch.** Set it → **External** mode (connect to your walletd). Leave it unset → **Managed** mode (exfer-mcp spawns its own walletd against the public mainnet defaults below).
+
+### External mode
+
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `WALLETD_URL` | ✓ | — | walletd base URL |
+| `WALLETD_URL` | ✓ (set → external) | — | walletd base URL |
 | `WALLETD_AUTH_TOKEN` | ✓ | — | walletd bearer token |
 | `WALLETD_FINGERPRINT` | only for `https://` with a self-signed cert | — | SHA-256 of walletd's TLS cert (`sha256:<hex>`) |
+
+### Managed mode (`WALLETD_URL` unset)
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `WALLETD_KEYSTORE_PASSPHRASE` | ✓ | — | Passphrase to unlock (and, on first run, create) the managed wallet keystore. **Required in managed mode.** |
+| `EXFER_WALLETD_BIN` | only if `exfer-walletd` isn't on `PATH` | auto-detect `exfer-walletd` on `PATH` | Full path to the walletd binary |
+| `EXFER_NODE_RPC` | | `http://64.176.231.198:9334,http://89.127.232.155:9334` | Upstream Exfer node(s) — the project's public mainnet **reference node + a backup**, comma-separated. walletd round-robins and fails over across them. |
+| `EXFER_INDEXER_RPC` | | `http://64.176.231.198:9335` | The project's public mainnet **indexer**, for observability queries that need data outside this wallet's own keys. Set to an **empty string** to disable indexer delegation. |
+| `WALLETD_DATADIR` | | `~/.exfer-walletd-mcp` | Where the managed keystore + bearer tokens live. Persists across restarts; reused if present. |
+| `EXFER_WALLETD_BIND` | | `127.0.0.1:7448` | Preferred loopback `host:port`. If the port is busy, exfer-mcp picks a free loopback port instead so it never collides with a walletd you run yourself. |
+
+### Common to both modes
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
 | `EXFER_MCP_DEFAULT_FEE_RATE` | | walletd default | fee_rate (exfers/byte) for spends when the agent didn't specify |
 | `EXFER_MCP_HTTPX_TIMEOUT` | | 30 | per-RPC timeout in seconds |
 
@@ -155,6 +241,7 @@ The simulate-first pattern means the agent always knows the cost before committi
 - `exfer-mcp` does no per-call confirmation by itself — that's the host's job. If you need spend caps, configure them on the walletd side (planned for v1.10) or run a walletd that only holds a small float you would be comfortable losing.
 - The MCP transport is stdio. The agent does not see the wire token; only this process does.
 - Errors from walletd surface as MCP `isError=true` content the agent reads and reacts to, including specific cases like `InsufficientBalanceError` (over-spend) and `WaitTimeoutError` (confirmation depth not reached in time).
+- **Managed mode is also a hot wallet.** The walletd exfer-mcp spawns binds **loopback only** and its bearer tokens never leave the local machine — exfer-mcp also **redacts** any 64-hex token from walletd's forwarded `[walletd]` log lines, so the first-run spend token never lands in the host's stderr log file. Anything that can reach the MCP server can still spend its funds. The 24-word recovery phrase is printed to stderr **once**, on first run (`BACK UP THIS RECOVERY PHRASE`) — it is the **only** backup for that wallet, so write it down then. Treat `WALLETD_KEYSTORE_PASSPHRASE` and the contents of `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) as wallet secrets, and keep only a float you'd be comfortable losing in the managed wallet.
 
 ## Coming soon
 

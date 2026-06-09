@@ -23,8 +23,9 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
 from ._version import __version__
-from .config import Config, ConfigError
+from .config import Config, ConfigError, ManagedConfig, managed_mode_selected
 from .tools import HANDLERS, TOOLS
+from .walletd_supervisor import WalletdSupervisor
 
 SERVER_NAME = "exfer-mcp"
 
@@ -54,9 +55,25 @@ def build_server(client: AsyncClient, config: Config) -> Server[None, Any]:
     return server
 
 
+def _resolve_config() -> tuple[Config, WalletdSupervisor | None]:
+    """Pick the run mode and produce the effective Config.
+
+    EXTERNAL mode (``WALLETD_URL`` set): unchanged — build Config from env.
+    MANAGED mode (``WALLETD_URL`` unset): spawn + supervise a walletd, then
+    build the effective Config against the spawned instance. Returns the
+    supervisor too so the caller can guarantee teardown on every exit path.
+    """
+    if managed_mode_selected():
+        managed = ManagedConfig.from_env()
+        supervisor = WalletdSupervisor(managed)
+        url, token = supervisor.start()
+        return Config.for_managed(url, token), supervisor
+    return Config.from_env(), None
+
+
 async def _run() -> None:
     try:
-        config = Config.from_env()
+        config, supervisor = _resolve_config()
     except ConfigError as exc:
         # Exit before opening stdio: the host will treat this as a hard
         # subprocess failure and surface our stderr to the operator.
@@ -67,21 +84,27 @@ async def _run() -> None:
     if config.walletd_fingerprint is not None:
         client_kwargs["fingerprint"] = config.walletd_fingerprint
 
-    async with AsyncClient(config.walletd_url, config.walletd_token, **client_kwargs) as client:
-        server = build_server(client, config)
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream,
-                write_stream,
-                InitializationOptions(
-                    server_name=SERVER_NAME,
-                    server_version=__version__,
-                    capabilities=server.get_capabilities(
-                        notification_options=NotificationOptions(),
-                        experimental_capabilities={},
+    try:
+        async with AsyncClient(config.walletd_url, config.walletd_token, **client_kwargs) as client:
+            server = build_server(client, config)
+            async with stdio_server() as (read_stream, write_stream):
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name=SERVER_NAME,
+                        server_version=__version__,
+                        capabilities=server.get_capabilities(
+                            notification_options=NotificationOptions(),
+                            experimental_capabilities={},
+                        ),
                     ),
-                ),
-            )
+                )
+    finally:
+        # MANAGED mode: never leave an orphaned walletd. Idempotent with
+        # the supervisor's atexit + signal handlers.
+        if supervisor is not None:
+            supervisor.stop()
 
 
 def main() -> None:
