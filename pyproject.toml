@@ -52,7 +52,7 @@ Repository    = "https://github.com/exfer-stack/exfer-mcp"
 # this block and bump the floor) once exfer-py cuts a release with these
 # methods on PyPI.
 [tool.uv.sources]
-exfer-walletd = { git = "https://github.com/exfer-stack/exfer-py.git", rev = "081f2fcf92e4a88f41928c4e6c3f9175a74eaaf7" }
+exfer-walletd = { git = "https://github.com/exfer-stack/exfer-py.git", rev = "ca5384d068715644805b16d7bc710d51bd921b1c" }
 
 [project.optional-dependencies]
 dev = [

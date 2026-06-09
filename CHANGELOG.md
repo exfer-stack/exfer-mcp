@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Address ergonomics + chain-height tools.** `exfer_generate_address`
+  now returns `{address, pubkey, index}` as JSON (it previously returned
+  only the address text and dropped the pubkey) — feed the `pubkey`
+  straight into `exfer_quote_issue` as `payee_pubkey`. Two new read-only
+  tools: `exfer_list_addresses` (returns the full per-address records)
+  and `exfer_get_block_height` (returns `{height, block_id}` for the
+  current chain tip). Tool surface 20 → 22. Requires the exfer-py SDK
+  with the typed `generate_address`/`list_addresses` return shapes.
 - **Managed-walletd mode.** exfer-mcp can now run self-contained: when
   `WALLETD_URL` is **unset**, it spawns and supervises its own
   `exfer-walletd` subprocess against the project's public mainnet
