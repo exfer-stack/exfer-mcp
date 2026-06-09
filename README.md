@@ -6,20 +6,44 @@ Model Context Protocol server for the [Exfer](https://github.com/ahuman-exfer/ex
 
 ## What it exposes
 
-Eight tools — enough for the "Hello World agent flow" of generating an address, simulating a transfer, sending it, waiting for confirmation, and being notified the instant a payment arrives:
+22 tools spanning the full wallet, payment, HTLC, reputation, and EXFER-QUOTE surface.
+
+**Wallet & chain (read)**
 
 | Tool | What it does |
 |---|---|
-| `exfer_generate_address` | Create a new managed wallet address |
+| `exfer_generate_address` | Create a new managed address — returns `{address, pubkey, index}` (use the `pubkey` as a quote's `payee_pubkey`) |
+| `exfer_list_addresses` | List the managed addresses (with index / label) |
 | `exfer_get_balance` | Confirmed balance of a managed address |
+| `exfer_get_block_height` | Current chain tip `{height, block_id}` |
+
+**Payments**
+
+| Tool | What it does |
+|---|---|
 | `exfer_simulate_transfer` | Dry-run a payment — exact fee + inputs, no broadcast |
-| `exfer_transfer` | Build, sign, broadcast a payment |
+| `exfer_transfer` | Build, sign, broadcast a payment (optional on-chain `datum`) |
 | `exfer_wait_for_tx` | Block until a tx reaches a confirmation depth |
 | `exfer_wait_for_payment` | Block until a payment to an address is seen — sub-second push, no polling |
-| `exfer_payment_uri_encode` | Build a BIP21-style `exfer:` URI |
-| `exfer_payment_uri_decode` | Parse a BIP21-style `exfer:` URI |
+| `exfer_payment_uri_encode` / `_decode` | Build / parse a BIP21-style `exfer:` URI |
 
-HTLC swap tools, attestation / reputation lookups, and `htlc_list` are out of v0.1 scope — tracked for v0.2.
+**Identity & EXFER-QUOTE**
+
+| Tool | What it does |
+|---|---|
+| `exfer_sign_message` / `exfer_verify_message` | Sign / verify an arbitrary message (proof of key control) |
+| `exfer_quote_issue` | Issue a signed EXFER-QUOTE price credential (Spend-posture; signs, moves no money) |
+| `exfer_quote_verify` | Verify a signed EXFER-QUOTE (pure read) |
+
+**Conditional payment & reputation**
+
+| Tool | What it does |
+|---|---|
+| `exfer_htlc_lock` / `_claim` / `_reclaim` / `_status` / `_list` | Hash-time-locked contracts (atomic swaps) |
+| `exfer_get_address_history` | An address's on-chain activity (indexer-backed) |
+| `exfer_get_attestation_edges` / `exfer_detect_in_chain_swaps` | Counterparty reputation / swap detection (indexer-backed) |
+
+> The reputation / history tools and non-owned HTLC lookups require walletd to be pointed at an `exfer-indexer` (it is, by default, in managed mode).
 
 ## Two ways to run
 
@@ -79,13 +103,13 @@ On first run, the managed wallet has no keystore, so exfer-mcp initialises a fre
 
 > ⚠️ **The managed wallet is a HOT WALLET.** Anything that can reach this MCP server can spend its funds (see [Safety](#safety)). The keystore + scoped bearer tokens live under `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) and persist across restarts, so the phrase is shown **once** — back it up the first time.
 
-What managed mode does for you, in order:
+Managed mode is **lazy / non-blocking** — the MCP handshake is instant, so the host (codex / Claude) never appears frozen on startup:
 
-1. Picks a loopback bind — `127.0.0.1:7448` by default, or a free loopback port if 7448 is busy (so a managed walletd never collides with a walletd you run yourself).
-2. Initialises a seeded keystore under `WALLETD_DATADIR` if one isn't there yet, surfacing the recovery phrase; reuses the existing keystore otherwise.
-3. Spawns `exfer-walletd --datadir … --bind … --node-rpc … --indexer-rpc …` with your passphrase in its env, forwarding its logs to the MCP's stderr with a `[walletd]` prefix.
-4. Waits (up to ~30 s) until walletd answers a `get_block_height` health probe, reads the spend-scope bearer token, and points the rest of exfer-mcp at the spawned instance.
-5. On shutdown (clean exit, `SIGINT`, or `SIGTERM`) terminates walletd — `SIGTERM`, then `SIGKILL` after a grace period. **No orphaned walletd processes.**
+1. Picks a loopback bind — `127.0.0.1:7448` by default, or a free loopback port if 7448 is busy (so a managed walletd never collides with a walletd you run yourself) — **synchronously**, so the bind is known immediately.
+2. **Answers the MCP handshake + `list_tools` right away** (the tool list is static and needs no walletd); walletd is brought up in the **background**.
+3. In the background: initialises a seeded keystore under `WALLETD_DATADIR` if one isn't there yet (surfacing the recovery phrase; reuses an existing keystore otherwise), then spawns `exfer-walletd --datadir … --bind … --node-rpc … --indexer-rpc …` with your passphrase in its env, forwarding its logs to the MCP's stderr with a `[walletd]` prefix (bearer tokens **redacted**).
+4. The **first tool call** waits until walletd answers a `get_block_height` health probe (typically a few seconds; up to ~30 s), reads the spend-scope bearer token, and caches the client — so the agent sees at most one slightly-slow first call, never a frozen handshake. A ready-timeout returns a clear error, not a hang.
+5. On shutdown (clean exit, `SIGINT`, or `SIGTERM`) terminates walletd — `SIGTERM`, then `SIGKILL` after a grace period; the first-run init child is torn down too. **No orphaned walletd processes.**
 
 ## Install
 
