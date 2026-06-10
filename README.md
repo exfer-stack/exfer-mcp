@@ -8,7 +8,7 @@ MCP server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain —
 
 Works with any agent that can run shell commands and edit config (Claude Code, Claude Desktop, Cursor, Codex, …). It keeps wallet secrets out of the chat:
 
-> Set up the **exfer** MCP server for me — a hot wallet for the Exfer chain. Treat it as a young project: the `walletd` binary is only run after its SHA-256 matches the published release and it binds to loopback, but anything that can reach the server can spend the wallet, so I'll keep only a small float.
+> Set up the **exfer** MCP server for me — a hot wallet for the Exfer chain. Treat it as a young project: the `walletd` binary is only run after its SHA-256 matches a digest baked into exfer-mcp, and it binds to loopback, but anything that can reach the server can spend the wallet, so I'll keep only a small float.
 >
 > 1. **Ensure `uv` is installed** (it provides `uvx`): macOS/Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows `irm https://astral.sh/uv/install.ps1 | iex`.
 > 2. **Make a fresh passphrase** with `uv run --no-project python -c "import secrets; print(secrets.token_urlsafe(24))"` and use it as the value of `WALLETD_KEYSTORE_PASSPHRASE` — inject it directly (e.g. shell command substitution) so the literal **never appears in this chat**.
@@ -35,7 +35,7 @@ Then point your MCP host at `uvx exfer-mcp` (configs below). Or `pip install exf
 
 ### Managed (zero-setup) — recommended
 
-Leave `WALLETD_URL` unset. exfer-mcp spawns + supervises its own walletd against Exfer's public mainnet node + indexer, and **obtains the walletd binary automatically**: `EXFER_WALLETD_BIN` → `exfer-walletd` on `PATH` → else it downloads the prebuilt binary for your platform and verifies it against the release's `SHA256SUMS` before running it (cached in `~/.cache/exfer-mcp/walletd/`). You only provide a passphrase:
+Leave `WALLETD_URL` unset. exfer-mcp spawns + supervises its own walletd against Exfer's public mainnet node + indexer, and **obtains the walletd binary automatically**: `EXFER_WALLETD_BIN` → `exfer-walletd` on `PATH` → else it downloads the prebuilt binary for your platform and verifies it against a SHA-256 **baked into this exfer-mcp release** (not a co-located checksum) before running it, re-checking on every run (cached `0o700` in `~/.cache/exfer-mcp/walletd/`). You only provide a passphrase:
 
 ```jsonc
 {
@@ -104,7 +104,7 @@ The intended spend flow is **simulate → confirm with the user → transfer →
 
 - `WALLETD_AUTH_TOKEN` / `WALLETD_KEYSTORE_PASSPHRASE` and the `WALLETD_DATADIR` contents are wallet secrets — full spend authority. The managed walletd binds loopback-only, and exfer-mcp redacts bearer tokens from forwarded logs.
 - No per-call human gate is built in (that's the host's job). Bound the blast radius with walletd spend caps, or keep only a small float.
-- Auto-downloaded walletd binaries are run **only** after their SHA-256 matches the release `SHA256SUMS`; a mismatch or a checksum-less release is refused.
+- Auto-downloaded walletd binaries are run **only** after their SHA-256 matches a digest **baked into this exfer-mcp release** — re-verified on every run, not just first download. The trust anchor is the PyPI package's Trusted-Publishing provenance, **not** the mutable GitHub release (a co-located `SHA256SUMS` would be worthless against a release/account compromise). A mismatch or an unpinned walletd version is refused; `EXFER_WALLETD_BIN` overrides with a binary you built/trust.
 
 ## License
 
