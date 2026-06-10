@@ -12,9 +12,9 @@ Works with any agent that can run shell commands and edit config (Claude Code, C
 >
 > 1. **Ensure `uv` is installed** (it provides `uvx`): macOS/Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows `irm https://astral.sh/uv/install.ps1 | iex`.
 > 2. **Make a fresh passphrase** with `uv run --no-project python -c "import secrets; print(secrets.token_urlsafe(24))"` and use it as the value of `WALLETD_KEYSTORE_PASSPHRASE` — inject it directly (e.g. shell command substitution) so the literal **never appears in this chat**.
-> 3. **Register an MCP server** named `exfer` in whatever host I use — command `uvx`, args `["exfer-mcp==0.3.2"]`, env `WALLETD_KEYSTORE_PASSPHRASE`. Claude Code: `claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE=… -- uvx exfer-mcp==0.3.2`. Claude Desktop / Cursor / Codex: add that block under `mcpServers` in the host's config file.
+> 3. **Register an MCP server** named `exfer` in whatever host I use — command `uvx`, args `["exfer-mcp==0.3.2"]`, env `WALLETD_KEYSTORE_PASSPHRASE`. Claude Code: `claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE=… -- uvx exfer-mcp==0.3.2`. Claude Desktop / Cursor / Codex: add that block under `mcpServers` in the host's config file. To confirm it registered, check the config simply *has* the `WALLETD_KEYSTORE_PASSPHRASE` key — **do NOT run `claude mcp get` or `mcp list -v`; they print the passphrase straight back into this chat.**
 > 4. **Reload MCP servers, then call `exfer_get_block_height`** — a height means it's live. (The first call downloads + checksum-verifies the `walletd` binary, so it may take a few seconds.) Then give me a receive address via `exfer_generate_address`.
-> 5. First run logs a **24-word recovery phrase once** — the wallet's only backup. **Don't repeat it in this chat;** tell me to copy it from the host's MCP server log and keep it offline.
+> 5. On first run the wallet writes its **24-word recovery phrase** to `<WALLETD_DATADIR>/RECOVERY_PHRASE.txt` (mode 0600; default `~/.exfer-walletd-mcp`) — the only backup. **Don't repeat it in this chat;** tell me to copy that file offline and then delete it. Losing both it and the passphrase means the wallet is unrecoverable.
 
 Prefer to wire it by hand? See [Configure](#configure) below.
 
