@@ -95,9 +95,13 @@ def test_managed_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     cfg = ManagedConfig.from_env()
 
     assert cfg.node_rpc == DEFAULT_NODE_RPC
-    assert "64.176.231.198:9334" in cfg.node_rpc
-    assert "89.127.232.155:9334" in cfg.node_rpc  # backup
-    assert cfg.indexer_rpc == DEFAULT_INDEXER_RPC == "http://64.176.231.198:9335"
+    # Default to the project's PUBLISHED public community nodes (nodes.toml),
+    # as a multi-node failover list — not any single app's private node.
+    assert "89.127.232.155:9334" in cfg.node_rpc
+    assert "80.78.31.82:9334" in cfg.node_rpc
+    assert cfg.node_rpc.count("http://") >= 2, "default should list multiple nodes for failover"
+    assert cfg.indexer_rpc == DEFAULT_INDEXER_RPC
+    assert cfg.indexer_rpc is not None and "9335" in cfg.indexer_rpc
     assert cfg.bind_host == "127.0.0.1"
     assert f"{cfg.bind_host}:{cfg.bind_port}" == DEFAULT_BIND
     assert cfg.datadir == Path.home() / ".exfer-walletd-mcp"
