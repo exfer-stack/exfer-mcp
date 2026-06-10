@@ -365,3 +365,23 @@ def test_spawn_after_stop_is_terminated(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert spawned, "Popen should have been called"
     assert spawned[0].poll() is not None, "the raced-in child must be terminated (no orphan)"
+
+
+def test_startup_exit_explains_passphrase_mismatch(tmp_path: Path) -> None:
+    # A second session whose passphrase differs from the one that sealed the
+    # shared datadir gets a clean "wallet unavailable", not a bare exit code.
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._log_tail.append("Error: keystore locked: decryption failed (wrong passphrase?)")
+    msg = sup._explain_startup_exit(1)
+    assert "managed wallet unavailable" in msg
+    assert "passphrase" in msg.lower()
+    assert "WALLETD_DATADIR" in msg and "external mode" in msg
+
+
+def test_startup_exit_explains_in_use(tmp_path: Path) -> None:
+    # A concurrent second walletd on the same datadir (DB lock) is reported as
+    # already-in-use rather than a cryptic crash.
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._log_tail.append("error: database is locked by another process")
+    msg = sup._explain_startup_exit(1)
+    assert "already in use by another exfer-mcp session" in msg

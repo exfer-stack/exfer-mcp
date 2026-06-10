@@ -45,6 +45,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from types import FrameType
@@ -68,6 +69,9 @@ _READY_POLL_INTERVAL_SECS = 0.25
 
 # Grace period between SIGTERM and SIGKILL on shutdown.
 _TERM_GRACE_SECS = 5.0
+
+# How many recent walletd log lines to retain for diagnosing a startup exit.
+_LOG_TAIL_LINES = 14
 
 # walletd prints its three scoped bearer tokens (read / manage / SPEND) in
 # plaintext on first-run init. Each is 64 lowercase hex chars. We forward
@@ -158,6 +162,7 @@ class WalletdSupervisor:
         self._proc: subprocess.Popen[bytes] | None = None
         self._init_proc: subprocess.Popen[str] | None = None
         self._log_thread: threading.Thread | None = None
+        self._log_tail: deque[str] = deque(maxlen=_LOG_TAIL_LINES)
         self._stopped = False
         self._lock = threading.Lock()
         self._port: int | None = None
@@ -457,13 +462,14 @@ class WalletdSupervisor:
         self._log_thread = threading.Thread(target=self._forward_logs, args=(proc,), daemon=True)
         self._log_thread.start()
 
-    @staticmethod
-    def _forward_logs(proc: subprocess.Popen[bytes]) -> None:
+    def _forward_logs(self, proc: subprocess.Popen[bytes]) -> None:
         """Forward walletd's combined output to our stderr with a prefix.
 
         Every line is run through :func:`_redact_secrets` first so a
         first-run bearer token (printed in plaintext by walletd) never
-        reaches the host's durable stderr log.
+        reaches the host's durable stderr log. The redacted lines are also
+        retained in a small ring buffer so a startup exit can be explained
+        (see :meth:`_explain_startup_exit`).
         """
         stream = proc.stdout
         if stream is None:
@@ -473,7 +479,52 @@ class WalletdSupervisor:
                 if not raw:
                     break
                 line = raw.decode("utf-8", errors="replace").rstrip("\n")
-                _eprint(f"[walletd] {_redact_secrets(line)}")
+                redacted = _redact_secrets(line)
+                self._log_tail.append(redacted)
+                _eprint(f"[walletd] {redacted}")
+
+    def _explain_startup_exit(self, code: int | None) -> str:
+        """Map a walletd startup exit to a clear, actionable error.
+
+        The common multi-session cause is that the managed datadir is already
+        owned by another exfer-mcp instance, or its keystore was sealed with a
+        different passphrase — walletd then exits before it can serve. Map the
+        known signatures to a plain "wallet unavailable" message instead of a
+        bare exit code, and append the recent ``[walletd]`` log tail.
+        """
+        tail = "\n".join(self._log_tail)
+        low = tail.lower()
+        datadir = self._config.datadir
+        if any(s in low for s in ("decryption failed", "wrong passphrase", "keystore locked")):
+            reason = (
+                f"the managed wallet at {datadir} exists but could not be unlocked — "
+                "WALLETD_KEYSTORE_PASSPHRASE does not match the passphrase that created it "
+                "(another session likely created this wallet with a different passphrase)"
+            )
+        elif any(
+            s in low
+            for s in (
+                "already in use",
+                "in use by",
+                "could not acquire",
+                "lock",
+                "resource temporarily unavailable",
+                "address already in use",
+                "database is locked",
+            )
+        ):
+            reason = (
+                f"the managed wallet at {datadir} is already in use by another exfer-mcp session"
+            )
+        else:
+            reason = f"the managed walletd exited during startup (code {code})"
+        return (
+            f"managed wallet unavailable: {reason}. Managed mode uses one wallet per datadir and "
+            "only one session can hold it at a time — for multiple Claude sessions give each a "
+            "unique WALLETD_DATADIR, or run one shared walletd and use external mode "
+            "(WALLETD_URL + WALLETD_AUTH_TOKEN)."
+            + (f"\n--- recent [walletd] log ---\n{tail}" if tail else "")
+        )
 
     # -- readiness -------------------------------------------------------
 
@@ -492,10 +543,7 @@ class WalletdSupervisor:
         while time.monotonic() < deadline:
             # walletd died during startup — surface its exit immediately.
             if self._proc is not None and self._proc.poll() is not None:
-                raise ConfigError(
-                    f"managed walletd exited during startup (code {self._proc.returncode}); "
-                    "see the [walletd] log lines above"
-                )
+                raise ConfigError(self._explain_startup_exit(self._proc.returncode))
             token = self._read_token(token_path)
             if token is not None:
                 ok, last_err = self._probe(url, token)
