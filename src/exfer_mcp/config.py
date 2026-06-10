@@ -45,21 +45,15 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-# MANAGED-mode default endpoints — the project's PUBLISHED public community
-# nodes (exfer-docs/nodes.toml: node-a/-b/-c), NOT any single app's private node
-# (mobile/desktop ship their own infra IPs that aren't public). walletd
-# round-robins + fails over across the comma-separated list, so we ship all
-# three for resilience; ordered so the entries reachable from the widest set of
-# networks come first (verified from multiple regions), so a typical run
-# succeeds on the first try rather than relying on failover. Override with
+# MANAGED-mode default endpoints — the project's own dedicated, well-provisioned
+# nodes (the same infra the mobile + desktop wallets ship with), preferred over
+# the "best-effort, rate-limited" community nodes in exfer-docs/nodes.toml.
+# walletd round-robins + fails over across the comma-separated list, so we ship
+# both for resilience. Each host also runs an indexer on :9335. Override with
 # EXFER_NODE_RPC / EXFER_INDEXER_RPC. (Hardcoded IPs are inherently fragile —
 # a DNS-named endpoint is the right long-term fix on the project side.)
-DEFAULT_NODE_RPC = (
-    "http://89.127.232.155:9334,http://80.78.31.82:9334,http://82.221.100.201:9334"
-)
-# Only node-a (82.221.100.201) also runs a public indexer; keep a second
-# reachable indexer as failover for networks that can't reach it.
-DEFAULT_INDEXER_RPC = "http://82.221.100.201:9335,http://64.176.231.198:9335"
+DEFAULT_NODE_RPC = "http://64.176.231.198:9334,http://198.13.38.245:9334"
+DEFAULT_INDEXER_RPC = "http://64.176.231.198:9335,http://198.13.38.245:9335"
 DEFAULT_BIND = "127.0.0.1:7448"
 DEFAULT_WALLETD_BIN = "exfer-walletd"
 DEFAULT_DATADIR_NAME = ".exfer-walletd-mcp"

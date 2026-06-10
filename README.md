@@ -11,7 +11,7 @@ MCP server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain —
 - **Source is public + auditable** — this repo plus the daemon and SDK above. Read what you run.
 - **PyPI provenance** — every release is published *from this repo* via [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC, no long-lived token); the [PyPI page](https://pypi.org/project/exfer-mcp/) shows a signed attestation tying each artifact back to this repo + workflow.
 - **Binary verification** — managed mode runs an `exfer-walletd` binary only if its SHA-256 matches a digest **baked into this (auditable) package** (re-checked every run). The trust anchor is this package, *not* a mutable GitHub release. Prefer your own build? Set `EXFER_WALLETD_BIN`.
-- **Pin the version** — use `exfer-mcp==0.3.1` (as below), so you run a specific reviewed release.
+- **Pin the version** — use `exfer-mcp==0.3.2` (as below), so you run a specific reviewed release.
 
 If you can't independently confirm this package is the project's (e.g. via a link from the official site), **don't fund it** — treat any wallet tool you can't verify as hostile. See [SECURITY.md](SECURITY.md).
 
@@ -23,7 +23,7 @@ Works with any agent that can run shell commands and edit config (Claude Code, C
 >
 > 1. **Ensure `uv` is installed** (it provides `uvx`): macOS/Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows `irm https://astral.sh/uv/install.ps1 | iex`.
 > 2. **Make a fresh passphrase** with `uv run --no-project python -c "import secrets; print(secrets.token_urlsafe(24))"` and use it as the value of `WALLETD_KEYSTORE_PASSPHRASE` — inject it directly (e.g. shell command substitution) so the literal **never appears in this chat**.
-> 3. **Register an MCP server** named `exfer` in whatever host I use — command `uvx`, args `["exfer-mcp==0.3.1"]`, env `WALLETD_KEYSTORE_PASSPHRASE`. Claude Code: `claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE=… -- uvx exfer-mcp==0.3.1`. Claude Desktop / Cursor / Codex: add that block under `mcpServers` in the host's config file.
+> 3. **Register an MCP server** named `exfer` in whatever host I use — command `uvx`, args `["exfer-mcp==0.3.2"]`, env `WALLETD_KEYSTORE_PASSPHRASE`. Claude Code: `claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE=… -- uvx exfer-mcp==0.3.2`. Claude Desktop / Cursor / Codex: add that block under `mcpServers` in the host's config file.
 > 4. **Reload MCP servers, then call `exfer_get_block_height`** — a height means it's live. (The first call downloads + checksum-verifies the `walletd` binary, so it may take a few seconds.) Then give me a receive address via `exfer_generate_address`.
 > 5. First run logs a **24-word recovery phrase once** — the wallet's only backup. **Don't repeat it in this chat;** tell me to copy it from the host's MCP server log and keep it offline.
 
@@ -38,7 +38,7 @@ Prefer to wire it by hand? See [Configure](#configure) below.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then point your MCP host at `uvx exfer-mcp==0.3.1` (configs below) — pin the version so installs are reproducible (`uvx` otherwise resolves+caches whatever is latest). Or `pip install exfer-mcp` (Python ≥ 3.10; pulls the `exfer` SDK, `mcp`, and `psutil`).
+Then point your MCP host at `uvx exfer-mcp==0.3.2` (configs below) — pin the version so installs are reproducible (`uvx` otherwise resolves+caches whatever is latest). Or `pip install exfer-mcp` (Python ≥ 3.10; pulls the `exfer` SDK, `mcp`, and `psutil`).
 
 ## Configure
 
@@ -53,7 +53,7 @@ Leave `WALLETD_URL` unset. exfer-mcp spawns + supervises its own walletd against
   "mcpServers": {
     "exfer": {
       "command": "uvx",
-      "args": ["exfer-mcp==0.3.1"],
+      "args": ["exfer-mcp==0.3.2"],
       "env": { "WALLETD_KEYSTORE_PASSPHRASE": "<a strong passphrase>" }
     }
   }
@@ -65,7 +65,7 @@ First run creates a seeded keystore and prints its 24-word recovery phrase to st
 Claude Code one-liner:
 
 ```bash
-claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE='<passphrase>' -- uvx exfer-mcp==0.3.1
+claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE='<passphrase>' -- uvx exfer-mcp==0.3.2
 ```
 
 ### External — connect to a walletd you run
@@ -77,7 +77,7 @@ Set `WALLETD_URL` + `WALLETD_AUTH_TOKEN` (and `WALLETD_FINGERPRINT` for `https:/
   "mcpServers": {
     "exfer": {
       "command": "uvx",
-      "args": ["exfer-mcp==0.3.1"],
+      "args": ["exfer-mcp==0.3.2"],
       "env": {
         "WALLETD_URL": "http://127.0.0.1:7448",
         "WALLETD_AUTH_TOKEN": "<walletd token>"
