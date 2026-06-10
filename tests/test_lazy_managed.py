@@ -14,6 +14,7 @@ deterministically and the timing assertions stay fast and stable.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ import pytest
 
 from exfer_mcp.config import Config, ConfigError, ManagedConfig
 from exfer_mcp.server import build_server
-from exfer_mcp.walletd_supervisor import WalletdSupervisor
+from exfer_mcp.walletd_supervisor import WalletdSupervisor, _seeded_keystore_exists
 
 # A bring-up that never resolves should still let the handshake through;
 # we cap the test's own patience well under that so a regression (a
@@ -458,3 +459,41 @@ def test_reap_noop_on_clean_datadir(tmp_path: Path) -> None:
     # nothing, so the reap is a harmless no-op (and never raises).
     sup = WalletdSupervisor(_managed_cfg(tmp_path))
     sup._reap_stale_walletd()
+
+
+def test_seeded_keystore_exists_requires_seed_enc(tmp_path: Path) -> None:
+    seeded = tmp_path / "a"
+    (seeded / "wallets").mkdir(parents=True)
+    (seeded / "wallets" / "seed.enc").write_bytes(b"x")
+    assert _seeded_keystore_exists(seeded)
+
+    seedless = tmp_path / "b"
+    (seedless / "wallets").mkdir(parents=True)
+    (seedless / "wallets" / "state.json").write_text("{}")  # seedless, no seed.enc
+    assert not _seeded_keystore_exists(seedless), "state.json alone must not count as seeded"
+
+
+def test_init_rejects_seedless_populated_datadir(tmp_path: Path) -> None:
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    (sup._config.datadir / "wallets").mkdir(parents=True)
+    (sup._config.datadir / "wallets" / "state.json").write_text("{}")  # seedless owner
+    with pytest.raises(ConfigError, match="seedless/foreign wallet"):
+        sup._init_keystore_if_needed()  # must reject BEFORE spawning init-seeded
+
+
+def test_announce_mnemonic_writes_0600_file_not_stderr(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._config.datadir.mkdir(parents=True, exist_ok=True)
+    phrase = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima"
+    sup._announce_mnemonic(phrase, raw_stdout="{}")
+
+    path = sup._config.datadir / "RECOVERY_PHRASE.txt"
+    assert path.exists() and phrase in path.read_text()
+    if hasattr(os, "getuid"):  # POSIX: confirm 0600
+        assert (path.stat().st_mode & 0o777) == 0o600
+    # The phrase MUST NOT be echoed to stderr (hosts persist that to logs).
+    err = capsys.readouterr().err
+    assert phrase not in err, "recovery phrase must not be written to the log channel"
+    assert str(path) in err, "stderr should point the user at the saved file"

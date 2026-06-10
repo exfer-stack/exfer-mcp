@@ -88,16 +88,17 @@ _HEX_TOKEN_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])")
 _TOKEN_KEEP_PREFIX = 8
 
 
-def _keystore_exists(datadir: Path) -> bool:
-    """True if ``datadir`` already holds an initialised keystore.
+def _seeded_keystore_exists(datadir: Path) -> bool:
+    """True if a SEEDED managed keystore (``wallets/seed.enc``) is present.
 
-    ``init-seeded`` writes ``wallets/seed.enc``; a plain (non-seeded)
-    keystore would still have ``wallets/state.json``. Either marks an
-    existing keystore we must not re-init (that would overwrite the
-    user's only key material).
+    ``init-seeded`` writes ``wallets/seed.enc``. A bare ``wallets/state.json``
+    with NO ``seed.enc`` is a *seedless* keyring (an external/desktop walletd
+    touched this datadir) — deliberately NOT counted as seeded: treating it as
+    "initialised" would skip our seed init and leave a wallet with no recovery
+    phrase whose ``generate_address`` fails. That case is rejected explicitly in
+    :meth:`_init_keystore_if_needed`.
     """
-    wallets = datadir / "wallets"
-    return (wallets / "seed.enc").exists() or (wallets / "state.json").exists()
+    return (datadir / "wallets" / "seed.enc").exists()
 
 
 def find_free_loopback_port(preferred: int, host: str = "127.0.0.1") -> int:
@@ -385,9 +386,19 @@ class WalletdSupervisor:
     def _init_keystore_if_needed(self) -> None:
         cfg = self._config
         cfg.datadir.mkdir(parents=True, exist_ok=True)
-        if _keystore_exists(cfg.datadir):
-            _eprint(f"[walletd] reusing existing keystore at {cfg.datadir}")
+        wallets = cfg.datadir / "wallets"
+        if _seeded_keystore_exists(cfg.datadir):
+            _eprint(f"[walletd] reusing existing seeded keystore at {cfg.datadir}")
             return
+        if (wallets / "state.json").exists():
+            # Populated but seedless — refuse rather than skip init (which would
+            # leave a wallet with no recovery phrase and a broken generate_address).
+            raise ConfigError(
+                f"managed mode: {cfg.datadir} holds a seedless/foreign wallet "
+                "(wallets/state.json but no seed.enc). Managed mode needs a seeded "
+                "keystore — use a fresh WALLETD_DATADIR, or run that wallet via "
+                "external mode (set WALLETD_URL)."
+            )
 
         _eprint(f"[walletd] no keystore at {cfg.datadir} — initialising a new seeded wallet")
         env = self._child_env()
@@ -451,23 +462,44 @@ class WalletdSupervisor:
         return None
 
     def _announce_mnemonic(self, mnemonic: str | None, raw_stdout: str) -> None:
-        """Surface the recovery phrase PROMINENTLY — it's the only backup."""
+        """Persist the recovery phrase to a 0600 file — it's the only backup.
+
+        Hosts routinely swallow a managed server's stderr (Claude Desktop, GUI
+        hosts), so we DO NOT print the phrase to the log channel — that both
+        loses it and leaves it in plaintext host logs. Instead it is written to
+        ``<datadir>/RECOVERY_PHRASE.txt`` (mode 0600); stderr gets a pointer, not
+        the words. Only if the file can't be written do we fall back to stderr,
+        so the phrase is never silently lost.
+        """
         bar = "=" * 72
+        body = mnemonic if mnemonic else raw_stdout.strip()
+        phrase_path = self._config.datadir / "RECOVERY_PHRASE.txt"
+        try:
+            # 0600 from creation (not a chmod-after race).
+            fd = os.open(str(phrase_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(
+                    "EXFER managed wallet — recovery phrase.\n"
+                    "This is the ONLY backup for this HOT WALLET's funds. Copy the words\n"
+                    "below somewhere offline, then DELETE this file.\n\n"
+                    f"{body}\n"
+                )
+            with contextlib.suppress(OSError):
+                phrase_path.chmod(0o600)
+        except OSError as exc:
+            # Last resort only: file unwritable → surface to stderr so it's not lost.
+            _eprint(bar)
+            _eprint(f"  BACK UP THIS RECOVERY PHRASE (could not write {phrase_path}: {exc}).")
+            _eprint("  It is the ONLY backup for this hot wallet:")
+            _eprint(f"  {body}")
+            _eprint(bar)
+            return
         _eprint("")
         _eprint(bar)
-        _eprint("  BACK UP THIS RECOVERY PHRASE")
-        _eprint("  This managed wallet is a HOT WALLET. The 24-word phrase below is")
-        _eprint("  the ONLY way to recover its funds. exfer-mcp will not show it again.")
-        _eprint(bar)
-        if mnemonic:
-            _eprint("")
-            _eprint(f"  {mnemonic}")
-            _eprint("")
-        else:
-            # Never swallow it: if parsing failed, dump walletd's raw output.
-            _eprint("  (could not parse the phrase — raw walletd init output follows)")
-            for line in raw_stdout.splitlines():
-                _eprint(f"  {line}")
+        _eprint("  RECOVERY PHRASE SAVED — back up the only copy of this hot wallet")
+        _eprint(f"  Written (mode 0600) to: {phrase_path}")
+        _eprint("  Copy the 24 words offline, then DELETE that file.")
+        _eprint("  (Not printed here — so it never lands in host logs.)")
         _eprint(bar)
         _eprint("")
 

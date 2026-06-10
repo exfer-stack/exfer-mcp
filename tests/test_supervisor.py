@@ -23,8 +23,8 @@ import pytest
 from exfer_mcp.config import ManagedConfig
 from exfer_mcp.walletd_supervisor import (
     WalletdSupervisor,
-    _keystore_exists,
     _redact_secrets,
+    _seeded_keystore_exists,
     find_free_loopback_port,
 )
 
@@ -60,19 +60,21 @@ def test_free_port_falls_back_when_busy() -> None:
 
 
 def test_keystore_absent(tmp_path: Path) -> None:
-    assert _keystore_exists(tmp_path) is False
+    assert _seeded_keystore_exists(tmp_path) is False
 
 
 def test_keystore_present_seed(tmp_path: Path) -> None:
     (tmp_path / "wallets").mkdir()
     (tmp_path / "wallets" / "seed.enc").write_text("x")
-    assert _keystore_exists(tmp_path) is True
+    assert _seeded_keystore_exists(tmp_path) is True
 
 
-def test_keystore_present_state(tmp_path: Path) -> None:
+def test_state_json_alone_is_not_seeded(tmp_path: Path) -> None:
+    # A seedless keyring (state.json, no seed.enc) must NOT count as seeded —
+    # otherwise managed init is skipped and the wallet has no recovery phrase.
     (tmp_path / "wallets").mkdir()
     (tmp_path / "wallets" / "state.json").write_text("{}")
-    assert _keystore_exists(tmp_path) is True
+    assert _seeded_keystore_exists(tmp_path) is False
 
 
 # -- mnemonic extraction -------------------------------------------------
