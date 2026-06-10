@@ -131,21 +131,28 @@ def test_managed_autodetect_on_path(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert cfg.binary == str(binary)
 
 
-def test_managed_autodetect_falls_back_to_autodownload(
+def test_managed_autodetect_defers_autodownload_off_startup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # No EXFER_WALLETD_BIN and nothing on PATH → managed mode auto-downloads a
-    # verified prebuilt walletd instead of erroring (zero-setup).
+    # No EXFER_WALLETD_BIN and nothing on PATH → from_env() must NOT download the
+    # walletd binary at config time: a ~32MB fetch on the startup path blocks the
+    # MCP handshake and trips host startup timeouts. It records binary=None; the
+    # supervisor downloads lazily in its background bring-up instead.
     monkeypatch.delenv("EXFER_WALLETD_BIN", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))  # empty dir, no binary
     monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
-    fake = tmp_path / "downloaded-walletd"
-    fake.write_text("#!/bin/sh\n")
     import exfer_mcp.walletd_fetch as wf
 
-    monkeypatch.setattr(wf, "ensure_walletd_binary", lambda: fake)
+    calls = {"n": 0}
+
+    def _should_not_run() -> Path:
+        calls["n"] += 1
+        return tmp_path / "downloaded-walletd"
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", _should_not_run)
     cfg = ManagedConfig.from_env()
-    assert cfg.binary == str(fake)
+    assert cfg.binary is None, "auto-download must be deferred off the startup path"
+    assert calls["n"] == 0, "from_env() must not trigger the walletd download"
 
 
 def test_managed_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

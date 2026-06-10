@@ -108,7 +108,11 @@ def managed_mode_selected() -> bool:
 class ManagedConfig:
     """MANAGED-mode knobs: where + how to spawn the supervised walletd."""
 
-    binary: str
+    # None → no binary resolved at config time (none on PATH, no EXFER_WALLETD_BIN).
+    # The supervisor downloads + verifies a prebuilt one LAZILY in its background
+    # bring-up (WalletdSupervisor._binary_path), so the ~32MB fetch never lands on
+    # the MCP handshake path.
+    binary: str | None
     keystore_passphrase: str
     node_rpc: str
     indexer_rpc: str | None
@@ -126,17 +130,12 @@ class ManagedConfig:
                     f"EXFER_WALLETD_BIN points at a binary that does not exist: {binary!r}"
                 )
         else:
-            found = shutil.which(DEFAULT_WALLETD_BIN)
-            if found:
-                binary = found
-            else:
-                # Zero-setup: fetch + verify a prebuilt walletd for this
-                # platform (cached after first use). Lazy import avoids a
-                # config <-> walletd_fetch cycle. Raises a clear ConfigError
-                # if the binary can't be downloaded or verified.
-                from .walletd_fetch import ensure_walletd_binary
-
-                binary = str(ensure_walletd_binary())
+            # Auto-detect on PATH (instant). If not found, leave binary=None:
+            # managed zero-setup downloads + verifies a prebuilt walletd LAZILY in
+            # the supervisor's background bring-up (WalletdSupervisor._binary_path),
+            # NOT here. A ~32MB download on the startup path would block the MCP
+            # handshake and trip host startup timeouts (e.g. Codex's default 30s).
+            binary = shutil.which(DEFAULT_WALLETD_BIN)
 
         passphrase = os.environ.get("WALLETD_KEYSTORE_PASSPHRASE")
         if not passphrase:

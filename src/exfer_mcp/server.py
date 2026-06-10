@@ -191,6 +191,9 @@ async def _run_managed() -> None:
     a server that exits before walletd is ready still kills the spawning
     child — no orphan.
     """
+    # from_env() is instant: it never downloads the walletd binary (that is
+    # deferred to the supervisor's background bring-up), so the handshake below
+    # is not blocked by a cold-machine binary fetch.
     managed = ManagedConfig.from_env()
     supervisor = WalletdSupervisor(managed)
     try:
@@ -200,10 +203,39 @@ async def _run_managed() -> None:
         supervisor.stop()
 
 
+def _prewarm() -> None:
+    """Download + verify the prebuilt walletd binary, then exit — no passphrase,
+    no keystore, no walletd spawn, no serving.
+
+    Run once (``uvx exfer-mcp==<v> --prewarm``) BEFORE registering the MCP server:
+    invoking it via uvx caches the Python package + deps, and this fetches +
+    checksum-verifies the walletd binary into ``~/.cache/exfer-mcp``. The host's
+    first launch then finds everything cached and completes the MCP handshake
+    instantly, instead of blocking on a cold download and tripping a host startup
+    timeout (e.g. Codex's default 30s).
+    """
+    from .walletd_fetch import ensure_walletd_binary
+
+    try:
+        path = ensure_walletd_binary()
+    except Exception as exc:  # ConfigError or any download/verify failure
+        print(f"exfer-mcp: pre-warm failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"exfer-mcp {__version__}: walletd binary ready at {path}")
+    print("pre-warm complete — now register the MCP server and (re)start your host.")
+
+
 def main() -> None:
     """``[project.scripts]`` entrypoint. Synchronous wrapper around the
     async server loop so the binstub can be invoked directly by the MCP
-    host without an event loop already running."""
+    host without an event loop already running.
+
+    The only CLI flag is ``--prewarm`` (cache the walletd binary + exit); with no
+    flag we run the MCP server loop over stdio as the host expects.
+    """
+    if "--prewarm" in sys.argv[1:]:
+        _prewarm()
+        return
     asyncio.run(_run())
 
 

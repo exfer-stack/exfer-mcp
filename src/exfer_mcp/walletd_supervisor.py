@@ -216,6 +216,10 @@ class WalletdSupervisor:
 
     def __init__(self, config: ManagedConfig) -> None:
         self._config = config
+        # Resolved walletd binary path. Seeded from config (explicit EXFER_WALLETD_BIN
+        # or a PATH hit); None means "download lazily" — done in the background
+        # bring-up via _binary_path(), never on the handshake path.
+        self._binary: str | None = config.binary
         self._proc: subprocess.Popen[bytes] | None = None
         self._init_proc: subprocess.Popen[str] | None = None
         self._log_thread: threading.Thread | None = None
@@ -471,6 +475,7 @@ class WalletdSupervisor:
             )
 
         _eprint(f"[walletd] no keystore at {cfg.datadir} — initialising a new seeded wallet")
+        binary = self._binary_path()
         env = self._child_env()
         # Tracked Popen (not subprocess.run) so stop() can terminate the
         # init-seeded child if the server exits mid-init (the Argon2 keystore
@@ -478,7 +483,7 @@ class WalletdSupervisor:
         # first-run path too.
         try:
             proc = subprocess.Popen(
-                [cfg.binary, "--datadir", str(cfg.datadir), "init-seeded"],
+                [binary, "--datadir", str(cfg.datadir), "init-seeded"],
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -486,7 +491,7 @@ class WalletdSupervisor:
             )
         except FileNotFoundError as exc:
             raise ConfigError(
-                f"EXFER_WALLETD_BIN points at a binary that does not exist: {cfg.binary!r}"
+                f"EXFER_WALLETD_BIN points at a binary that does not exist: {binary!r}"
             ) from exc
 
         with self._lock:
@@ -575,10 +580,30 @@ class WalletdSupervisor:
 
     # -- spawn -----------------------------------------------------------
 
+    def _binary_path(self) -> str:
+        """Resolve the walletd binary, downloading + verifying a prebuilt one on
+        first need (the zero-setup case where it wasn't on PATH / EXFER_WALLETD_BIN).
+
+        Called only from the BACKGROUND bring-up (or the synchronous ``start``) —
+        NEVER from list_tools / the handshake — so the ~32MB download can't block
+        the MCP handshake and trip a host startup timeout. Cached after the first
+        resolution. Raises ConfigError (via :func:`ensure_walletd_binary`) if the
+        binary can't be fetched or verified; that surfaces as a clear tool error on
+        the first call rather than a hung handshake.
+        """
+        if self._binary is not None:
+            return self._binary
+        # Lazy import avoids a config <-> walletd_fetch import cycle.
+        from .walletd_fetch import ensure_walletd_binary
+
+        _eprint("[walletd] no walletd binary found — fetching a verified prebuilt one...")
+        self._binary = str(ensure_walletd_binary())
+        return self._binary
+
     def _build_argv(self, bind: str) -> list[str]:
         cfg = self._config
         argv = [
-            cfg.binary,
+            self._binary_path(),
             "--datadir",
             str(cfg.datadir),
             "--bind",
@@ -657,7 +682,7 @@ class WalletdSupervisor:
             )
         except FileNotFoundError as exc:
             raise ConfigError(
-                f"EXFER_WALLETD_BIN points at a binary that does not exist: {self._config.binary!r}"
+                f"EXFER_WALLETD_BIN points at a binary that does not exist: {self._binary!r}"
             ) from exc
 
         # Publish the handle under the lock and, if a teardown already

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -526,6 +527,95 @@ def test_reap_kills_orphan_but_spares_live_peer_and_others(
     assert not prefix_dd.killed, "must match the datadir by realpath, not a prefix"
     assert not live_peer.killed, "must NOT kill a walletd owned by a live concurrent session"
     assert orphan.killed, "must kill a true orphan whose parent is gone"
+
+
+def test_binary_path_downloads_lazily_when_unresolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """config.binary=None (zero-setup, deferred) → _binary_path() fetches once.
+
+    The download is driven from the bring-up path via _binary_path(), never from
+    the handshake, and the result is cached so repeated spawns don't re-fetch.
+    """
+    import exfer_mcp.walletd_fetch as wf
+
+    cfg = ManagedConfig(
+        binary=None,  # not on PATH / no EXFER_WALLETD_BIN → deferred auto-download
+        keystore_passphrase="pw",
+        node_rpc="http://node.test:9334",
+        indexer_rpc=None,
+        datadir=tmp_path / "dd",
+        bind_host="127.0.0.1",
+        bind_port=7448,
+    )
+    sup = WalletdSupervisor(cfg)
+
+    fake = tmp_path / "downloaded-walletd"
+    fake.write_text("#!/bin/sh\n")
+    calls = {"n": 0}
+
+    def _fetch() -> Path:
+        calls["n"] += 1
+        return fake
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", _fetch)
+
+    assert sup._binary_path() == str(fake)
+    assert sup._binary_path() == str(fake)  # cached — no second fetch
+    assert calls["n"] == 1
+
+
+def test_binary_path_returns_configured_binary_without_download(tmp_path: Path) -> None:
+    # An explicit/PATH-resolved binary is returned as-is — no fetch attempted.
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))  # binary="/nonexistent/exfer-walletd"
+    assert sup._binary_path() == "/nonexistent/exfer-walletd"
+
+
+def test_prewarm_fetches_binary_then_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `--prewarm` must fetch+verify the binary and NOT enter the async server loop.
+    import exfer_mcp.walletd_fetch as wf
+    from exfer_mcp import server as server_mod
+
+    fake = tmp_path / "wd"
+    fake.write_text("#!/bin/sh\n")
+    calls = {"n": 0}
+
+    def _fetch() -> Path:
+        calls["n"] += 1
+        return fake
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", _fetch)
+    monkeypatch.setattr(sys, "argv", ["exfer-mcp", "--prewarm"])
+    monkeypatch.setattr(
+        server_mod.asyncio,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not serve in --prewarm")),
+    )
+
+    server_mod.main()
+
+    assert calls["n"] == 1
+    assert "walletd binary ready" in capsys.readouterr().out
+
+
+def test_prewarm_failure_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import exfer_mcp.walletd_fetch as wf
+    from exfer_mcp import server as server_mod
+
+    def _fail() -> Path:
+        raise ConfigError("no prebuilt walletd for this platform")
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", _fail)
+    monkeypatch.setattr(sys, "argv", ["exfer-mcp", "--prewarm"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        server_mod.main()
+    assert exc_info.value.code == 1
+    assert "pre-warm failed" in capsys.readouterr().err
 
 
 def test_reap_noop_on_clean_datadir(tmp_path: Path) -> None:
