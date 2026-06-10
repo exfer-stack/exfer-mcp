@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import ctypes
 import json
 import os
 import re
@@ -147,6 +148,50 @@ def _redact_secrets(line: str) -> str:
     return _HEX_TOKEN_RE.sub(_mask, line)
 
 
+# --- orphan-cleanup primitives ---------------------------------------------
+#
+# Managed mode runs one walletd per datadir. Three reinforcing mechanisms keep
+# a walletd from outliving its MCP server and wedging the next session on the
+# datadir's DB lock:
+#   1. PR_SET_PDEATHSIG — the kernel SIGKILLs walletd when the server dies,
+#      even on an un-catchable SIGKILL where atexit/signal cleanup can't run.
+#   2. a pid-file reap on bring-up — kills any walletd left holding *our*
+#      datadir by a prior hard-killed session (covers the residual window and
+#      pre-existing orphans).
+#   3. ensure_ready() retry — relaunches a fresh bring-up after a failure, so a
+#      cleared cause (or a spurious pdeathsig kill) self-heals.
+_PR_SET_PDEATHSIG = 1
+_LIBC: ctypes.CDLL | None
+try:
+    _LIBC = ctypes.CDLL("libc.so.6", use_errno=True)
+except OSError:  # pragma: no cover - non-glibc / non-Linux
+    _LIBC = None
+
+# Name of the file (under the datadir) recording the managed walletd's pid.
+_PIDFILE_NAME = "walletd-mcp.pid"
+
+
+def _set_pdeathsig() -> None:  # pragma: no cover - runs in the forked child
+    """preexec_fn: ask the kernel to SIGKILL this child if its parent dies."""
+    if _LIBC is not None:
+        _LIBC.prctl(_PR_SET_PDEATHSIG, signal.SIGKILL)
+
+
+def _proc_cmdline(pid: int) -> str | None:
+    """Return ``pid``'s argv (NULs→spaces) via /proc, or None if not readable.
+
+    None means the pid is dead, unreadable, or /proc is absent (non-Linux) —
+    in every such case the reap treats it as "nothing to kill".
+    """
+    if pid <= 1:
+        return None
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except (FileNotFoundError, OSError, ProcessLookupError):
+        return None
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace")
+
+
 class WalletdSupervisor:
     """Spawns and supervises a managed ``exfer-walletd`` subprocess.
 
@@ -237,7 +282,10 @@ class WalletdSupervisor:
         responsive. Records the spend token + sets the ready event on
         success; records the error on failure (ensure_ready re-raises it).
         """
-        assert self._ready_event is not None
+        # Capture the event this attempt owns: a retry (relaunch) swaps in a
+        # fresh _ready_event, and we must resolve the one we were launched for.
+        event = self._ready_event
+        assert event is not None
         try:
             token = await asyncio.to_thread(self._bring_up_blocking, url)
         except Exception as exc:
@@ -250,7 +298,7 @@ class WalletdSupervisor:
             self._token = token
             _eprint(f"[walletd] ready at {url} (managed)")
         finally:
-            self._ready_event.set()
+            event.set()
 
     def _bring_up_blocking(self, url: str) -> str:
         """The synchronous bring-up body (run off-loop via a worker thread)."""
@@ -258,6 +306,9 @@ class WalletdSupervisor:
         with self._lock:
             if self._stopped:
                 raise ConfigError("managed walletd bring-up aborted: server is shutting down")
+        # Clear any orphan from a prior hard-killed session before we touch
+        # the datadir, so its DB lock can't fail our spawn.
+        self._reap_stale_walletd()
         self._init_keystore_if_needed()
         # Re-check after the (potentially slow) init: a teardown may have
         # landed while we were unlocking the keystore.
@@ -277,13 +328,44 @@ class WalletdSupervisor:
 
         Must be called after :meth:`start_background`.
         """
-        if self._ready_event is None:
+        event = self._ready_event
+        if event is None:
             raise RuntimeError("ensure_ready() called before start_background()")
-        await self._ready_event.wait()
+        await event.wait()
         if self._ready_error is not None:
-            raise self._ready_error
+            # The previous attempt failed. Relaunch ONE fresh bring-up (the
+            # reap may now clear a stale orphan, or whatever broke may have
+            # since resolved) and await it; re-raise only if it fails too.
+            event = self._relaunch_bringup(event)
+            await event.wait()
+            if self._ready_error is not None:
+                raise self._ready_error
         assert self._token is not None
         return f"http://{self.bind}", self._token
+
+    def _relaunch_bringup(self, failed_event: asyncio.Event) -> asyncio.Event:
+        """Reset failed-bring-up state and schedule a fresh attempt; return the
+        new event to await.
+
+        Concurrency-safe: only the first caller observing ``failed_event``
+        relaunches — a racing caller gets back whatever event is now current.
+        Once :meth:`stop` has run we do not relaunch (return the failed event
+        so the awaiter re-raises the recorded shutdown error).
+        """
+        with self._lock:
+            if self._ready_event is not failed_event:
+                assert self._ready_event is not None
+                return self._ready_event
+            if self._stopped:
+                return failed_event
+            _eprint("[walletd] previous bring-up failed — retrying managed walletd startup...")
+            self._ready_error = None
+            self._token = None
+            self._proc = None  # the failed attempt's walletd is already dead
+            new_event = asyncio.Event()
+            self._ready_event = new_event
+        self._bringup_task = asyncio.create_task(self._bring_up(self.choose_bind()))
+        return new_event
 
     def start(self) -> tuple[str, str]:
         """Init (if needed), spawn walletd, wait for ready, return (url, token).
@@ -424,6 +506,41 @@ class WalletdSupervisor:
         env["WALLETD_KEYSTORE_PASSPHRASE"] = self._config.keystore_passphrase
         return env
 
+    def _pidfile(self) -> Path:
+        return self._config.datadir / _PIDFILE_NAME
+
+    def _reap_stale_walletd(self) -> None:
+        """Kill a walletd left holding our datadir by a prior hard-killed run.
+
+        Reads the pid we recorded last time (``<datadir>/walletd-mcp.pid``)
+        and SIGKILLs it ONLY if it is still a live ``exfer-walletd`` whose
+        argv references *this* datadir — so PID reuse, a dead pid, or another
+        datadir's walletd are all left untouched. Without this, an orphan from
+        a SIGKILLed session keeps the redb lock and every later bring-up fails
+        with "Database already open".
+        """
+        try:
+            raw = self._pidfile().read_text().strip()
+        except (FileNotFoundError, OSError):
+            return
+        if not raw.isdigit():
+            return
+        pid = int(raw)
+        cmd = _proc_cmdline(pid)
+        if cmd is None or "exfer-walletd" not in cmd or str(self._config.datadir) not in cmd:
+            return
+        _eprint(
+            f"[walletd] reaping orphaned walletd pid={pid} holding {self._config.datadir} "
+            "(left by a prior hard-killed session)"
+        )
+        with contextlib.suppress(ProcessLookupError, OSError):
+            os.kill(pid, signal.SIGKILL)
+        # Wait (up to ~3s) for the OS to release the datadir's DB lock.
+        for _ in range(60):
+            if _proc_cmdline(pid) is None:
+                break
+            time.sleep(0.05)
+
     def _spawn(self, bind: str) -> None:
         argv = self._build_argv(bind)
         _eprint(f"[walletd] spawning: {' '.join(argv)}")
@@ -437,6 +554,11 @@ class WalletdSupervisor:
                 # also hit the child out-of-band; we deliver signals to it
                 # ourselves in stop().
                 start_new_session=True,
+                # Linux: have the kernel SIGKILL walletd if this server dies —
+                # the orphan-proofing that survives an un-catchable SIGKILL.
+                # No-op where unsupported (preexec only runs on POSIX; the
+                # prctl itself no-ops without glibc).
+                preexec_fn=_set_pdeathsig if os.name == "posix" else None,
             )
         except FileNotFoundError as exc:
             raise ConfigError(
@@ -461,6 +583,11 @@ class WalletdSupervisor:
 
         self._log_thread = threading.Thread(target=self._forward_logs, args=(proc,), daemon=True)
         self._log_thread.start()
+
+        # Record the pid so the NEXT bring-up (this session or a future one)
+        # can reap this walletd if we are hard-killed before stop() runs.
+        with contextlib.suppress(OSError):
+            self._pidfile().write_text(str(proc.pid))
 
     def _forward_logs(self, proc: subprocess.Popen[bytes]) -> None:
         """Forward walletd's combined output to our stderr with a prefix.

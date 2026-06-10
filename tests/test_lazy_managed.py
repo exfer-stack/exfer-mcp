@@ -14,6 +14,7 @@ deterministically and the timing assertions stay fast and stable.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -385,3 +386,48 @@ def test_startup_exit_explains_in_use(tmp_path: Path) -> None:
     sup._log_tail.append("error: database is locked by another process")
     msg = sup._explain_startup_exit(1)
     assert "already in use by another exfer-mcp session" in msg
+
+
+async def test_ensure_ready_retries_after_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A failed bring-up must not wedge the session: the next ensure_ready()
+    # relaunches a fresh attempt (self-heal once the cause clears).
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    attempts = {"n": 0}
+
+    async def flaky_bring_up(url: str) -> None:
+        event = sup._ready_event
+        assert event is not None
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            sup._ready_error = ConfigError("first attempt fails (datadir locked)")
+        else:
+            sup._ready_error = None
+            sup._token = "spend-token"
+        event.set()
+
+    monkeypatch.setattr(sup, "_bring_up", flaky_bring_up)
+    sup.start_background()
+    _url, token = await sup.ensure_ready()
+    assert token == "spend-token"
+    assert attempts["n"] == 2, "ensure_ready should relaunch exactly one retry"
+
+
+def test_reap_is_safe_on_foreign_pid(tmp_path: Path) -> None:
+    # The reap must NOT kill a pid whose argv isn't an exfer-walletd on our
+    # datadir — e.g. our own process. (If the guard were wrong this test would
+    # SIGKILL the test runner.)
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._config.datadir.mkdir(parents=True, exist_ok=True)
+    sup._reap_stale_walletd()  # no pidfile → no-op
+    sup._pidfile().write_text(str(os.getpid()))  # our pid: argv has no walletd
+    sup._reap_stale_walletd()  # must be a no-op; we stay alive
+    assert os.getpid() > 0
+
+
+def test_reap_is_safe_on_dead_pid(tmp_path: Path) -> None:
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._config.datadir.mkdir(parents=True, exist_ok=True)
+    sup._pidfile().write_text("2147483646")  # almost certainly not a live pid
+    sup._reap_stale_walletd()  # no live process → no-op, no raise
