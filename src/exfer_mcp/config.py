@@ -155,7 +155,11 @@ class ManagedConfig:
             indexer_rpc = indexer_env or None
 
         datadir_str = os.environ.get("WALLETD_DATADIR")
-        datadir = Path(datadir_str) if datadir_str else Path.home() / DEFAULT_DATADIR_NAME
+        # Canonicalise (absolute, symlinks/.. resolved) so the orphan reaper can
+        # match the datadir reliably regardless of how it was spelled.
+        datadir = (
+            Path(datadir_str) if datadir_str else Path.home() / DEFAULT_DATADIR_NAME
+        ).resolve()
 
         bind = os.environ.get("EXFER_WALLETD_BIND") or DEFAULT_BIND
         host, port = _parse_bind(bind)

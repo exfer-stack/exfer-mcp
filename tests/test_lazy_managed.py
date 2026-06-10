@@ -417,9 +417,9 @@ async def test_ensure_ready_retries_after_failure(
 class _FakeProc:
     """Minimal psutil.Process stand-in for reap tests."""
 
-    def __init__(self, pid: int, cmdline: list[str]) -> None:
+    def __init__(self, pid: int, cmdline: list[str], ppid: int = 1) -> None:
         self.pid = pid
-        self.info = {"cmdline": cmdline}
+        self.info = {"cmdline": cmdline, "ppid": ppid}
         self.killed = False
 
     def kill(self) -> None:
@@ -429,29 +429,33 @@ class _FakeProc:
         return 0
 
 
-def test_reap_kills_only_walletd_on_our_datadir(
+def test_reap_kills_orphan_but_spares_live_peer_and_others(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The scan must kill ONLY a live exfer-walletd whose argv references our
-    # datadir — never another datadir's walletd, never a non-walletd process.
+    # Reap ONLY a true orphan (parent gone) on OUR datadir — never a concurrent
+    # live session's walletd, another datadir's, or a non-walletd process.
     import exfer_mcp.walletd_supervisor as mod
 
     sup = WalletdSupervisor(_managed_cfg(tmp_path))
     dd = str(sup._config.datadir)
     other_dd = _FakeProc(101, ["/x/exfer-walletd", "--datadir", "/some/other/dir"])
     not_walletd = _FakeProc(102, ["python", "-m", "http.server", dd])  # has dd, not walletd
-    prefix_dd = _FakeProc(103, ["/x/exfer-walletd", "--datadir", dd + "-sibling"])  # prefix, not exact
-    match = _FakeProc(104, ["/x/exfer-walletd", "--datadir", dd, "--bind", "127.0.0.1:1"])
+    prefix_dd = _FakeProc(103, ["/x/exfer-walletd", "--datadir", dd + "-sibling"])  # prefix only
+    live_peer = _FakeProc(104, ["/x/exfer-walletd", "--datadir", dd], ppid=os.getpid())  # alive parent
+    orphan = _FakeProc(105, ["/x/exfer-walletd", "--datadir", dd], ppid=1)  # reparented to init
     monkeypatch.setattr(
-        mod.psutil, "process_iter", lambda attrs=None: iter([other_dd, not_walletd, prefix_dd, match])
+        mod.psutil,
+        "process_iter",
+        lambda attrs=None: iter([other_dd, not_walletd, prefix_dd, live_peer, orphan]),
     )
 
     sup._reap_stale_walletd()
 
     assert not other_dd.killed, "must not touch a walletd on another datadir"
     assert not not_walletd.killed, "must not touch a non-walletd process"
-    assert not prefix_dd.killed, "must match the datadir as an exact argv element, not a prefix"
-    assert match.killed, "must kill the walletd holding OUR datadir"
+    assert not prefix_dd.killed, "must match the datadir by realpath, not a prefix"
+    assert not live_peer.killed, "must NOT kill a walletd owned by a live concurrent session"
+    assert orphan.killed, "must kill a true orphan whose parent is gone"
 
 
 def test_reap_noop_on_clean_datadir(tmp_path: Path) -> None:
