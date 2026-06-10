@@ -4,17 +4,6 @@ MCP server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain —
 
 > ⚠️ **The agent can spend this wallet on its own — there is no per-transaction human approval.** Unlike a normal wallet (where you click "confirm" on each send), anything that can reach this MCP server — your agent, or a prompt-injection of it — can move the funds. Keep only a float you're OK losing, and/or set spend caps (`WALLETD_SPEND_CAP_PER_TX`, `WALLETD_SPEND_CAP_PER_PERIOD` + `WALLETD_SPEND_CAP_PERIOD_SECS`, in exfers).
 
-## Provenance & trust (read before funding)
-
-`exfer-mcp` is the Exfer project's official agent-wallet tooling, published by the **`exfer-stack`** org — which also ships the daemon it drives ([`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd)) and the [`exfer`](https://github.com/exfer-stack/exfer-py) Python SDK. It can spend real funds with **no per-transaction human approval**, so verify before you trust it:
-
-- **Source is public + auditable** — this repo plus the daemon and SDK above. Read what you run.
-- **PyPI provenance** — every release is published *from this repo* via [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC, no long-lived token); the [PyPI page](https://pypi.org/project/exfer-mcp/) shows a signed attestation tying each artifact back to this repo + workflow.
-- **Binary verification** — managed mode runs an `exfer-walletd` binary only if its SHA-256 matches a digest **baked into this (auditable) package** (re-checked every run). The trust anchor is this package, *not* a mutable GitHub release. Prefer your own build? Set `EXFER_WALLETD_BIN`.
-- **Pin the version** — use `exfer-mcp==0.3.2` (as below), so you run a specific reviewed release.
-
-If you can't independently confirm this package is the project's (e.g. via a link from the official site), **don't fund it** — treat any wallet tool you can't verify as hostile. See [SECURITY.md](SECURITY.md).
-
 ## Set it up — paste this to your agent
 
 Works with any agent that can run shell commands and edit config (Claude Code, Claude Desktop, Cursor, Codex, …). It keeps wallet secrets out of the chat:

@@ -21,8 +21,8 @@ agent, or a prompt-injection of it — can move the funds. Treat it accordingly.
   the mutable GitHub release / a co-located `SHA256SUMS`. Set `EXFER_WALLETD_BIN`
   to run a binary you built yourself instead.
 
-If you cannot independently confirm this package is the Exfer project's (for
-example, via a link from the official site), **do not fund it**.
+If you cannot independently confirm this package is the one you intend to run
+(for example, via a link from the project's own site/repos), **do not fund it**.
 
 ## Operating safely
 
