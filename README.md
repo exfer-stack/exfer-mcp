@@ -4,29 +4,19 @@ MCP server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain —
 
 > ⚠️ **It's a hot wallet.** Anything that can reach this server can spend it. Only fund it with what you're OK losing, or set spend caps (`WALLETD_SPEND_CAP_PER_TX`, `WALLETD_SPEND_CAP_PER_PERIOD` + `WALLETD_SPEND_CAP_PERIOD_SECS`, in exfers).
 
-## One-paste setup (hand this to your agent)
+## Set it up — paste this to your agent
 
-Paste this into a coding agent that can run shell commands (Claude Code, Cursor, …):
+Works with any agent that can run shell commands and edit config (Claude Code, Claude Desktop, Cursor, Codex, …). It keeps wallet secrets out of the chat:
 
-```text
-Set up the "exfer" MCP server for me in managed (zero-setup) mode:
+> Set up the **exfer** MCP server for me — a hot wallet for the Exfer chain. Treat it as a young project: the `walletd` binary is only run after its SHA-256 matches the published release and it binds to loopback, but anything that can reach the server can spend the wallet, so I'll keep only a small float.
+>
+> 1. **Ensure `uv` is installed** (it provides `uvx`): macOS/Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows `irm https://astral.sh/uv/install.ps1 | iex`.
+> 2. **Make a fresh passphrase** with `uv run --no-project python -c "import secrets; print(secrets.token_urlsafe(24))"` and use it as the value of `WALLETD_KEYSTORE_PASSPHRASE` — inject it directly (e.g. shell command substitution) so the literal **never appears in this chat**.
+> 3. **Register an MCP server** named `exfer` in whatever host I use — command `uvx`, args `["exfer-mcp"]`, env `WALLETD_KEYSTORE_PASSPHRASE`. Claude Code: `claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE=… -- uvx exfer-mcp`. Claude Desktop / Cursor / Codex: add that block under `mcpServers` in the host's config file.
+> 4. **Reload MCP servers, then call `exfer_get_block_height`** — a height means it's live; then give me a receive address via `exfer_generate_address`. If instead it says the `walletd` binary couldn't be downloaded/verified, fetch the binary for my platform from `https://github.com/exfer-stack/exfer-walletd/releases/latest`, mark it executable, set `EXFER_WALLETD_BIN` to its path, and retry.
+> 5. First run logs a **24-word recovery phrase once** — the wallet's only backup. **Don't repeat it in this chat;** tell me to copy it from the host's MCP server log and keep it offline.
 
-1. If `uv` isn't installed, install it:
-   - macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
-   - Windows: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-2. Generate a strong random passphrase for the managed hot wallet; show it to me and keep it.
-3. Register the server (Claude Code):
-   claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE='<that passphrase>' -- uvx exfer-mcp
-   (Other hosts: add an MCP server with command `uvx`, args ["exfer-mcp"], and that env var.)
-4. Reconnect the server, then call exfer_get_block_height to confirm it returns a height.
-5. If it errors that the walletd binary can't be downloaded/verified, grab the binary for my
-   platform from https://github.com/exfer-stack/exfer-walletd/releases/latest , chmod +x it,
-   and re-register with an extra `-e EXFER_WALLETD_BIN=/full/path/to/exfer-walletd`; retry step 4.
-6. On first run it prints a 24-word recovery phrase to its logs — capture it and give it to me
-   (it's the ONLY backup for this wallet), then tell me a receive address via exfer_generate_address.
-
-Reminder: this is a hot wallet — I'll only fund it with an amount I'm OK losing.
-```
+Prefer to wire it by hand? See [Configure](#configure) below.
 
 ## Install (manual)
 
