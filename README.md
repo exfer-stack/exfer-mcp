@@ -78,7 +78,7 @@ You already run `exfer-walletd` somewhere; exfer-mcp just connects to it. Set `W
 
 ### 2. Managed (zero-setup)
 
-Leave `WALLETD_URL` **unset**. exfer-mcp then spawns its own walletd against the project's **public mainnet reference node + indexer** and wires the rest of the server to it automatically. You only have to provide a keystore passphrase (and a path to the binary if `exfer-walletd` isn't on `PATH`):
+Leave `WALLETD_URL` **unset**. exfer-mcp then spawns its own walletd against the project's **public mainnet reference node + indexer** and wires the rest of the server to it automatically. You only have to provide a keystore passphrase:
 
 ```jsonc
 // codex / Claude config — MANAGED mode (zero-setup)
@@ -89,14 +89,14 @@ Leave `WALLETD_URL` **unset**. exfer-mcp then spawns its own walletd against the
       "args": ["exfer-mcp"],
       "env": {
         // No WALLETD_URL → managed mode.
-        "WALLETD_KEYSTORE_PASSPHRASE": "<a strong passphrase for the managed wallet>",
-        // Only needed if exfer-walletd is not on PATH:
-        "EXFER_WALLETD_BIN": "/path/to/exfer-walletd"
+        "WALLETD_KEYSTORE_PASSPHRASE": "<a strong passphrase for the managed wallet>"
       }
     }
   }
 }
 ```
+
+**The walletd binary is obtained automatically.** exfer-mcp resolves it in order: `EXFER_WALLETD_BIN` → `exfer-walletd` on `PATH` → otherwise it **downloads the prebuilt binary for your platform** from the pinned [`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd) release, **verifies it against that release's `SHA256SUMS`**, and caches it under `~/.cache/exfer-mcp/walletd/<version>/`. Since the binary is a hot-wallet daemon, a download is run **only** after its checksum matches; a release without checksums or a mismatch is refused. Pin a version with `EXFER_WALLETD_VERSION`, or set `EXFER_WALLETD_BIN` to a walletd you built yourself to skip the download.
 
 On first run, the managed wallet has no keystore, so exfer-mcp initialises a fresh **seeded** one and prints the 24-word recovery phrase **prominently to stderr** (the MCP host surfaces stderr to you). That phrase is the **only** backup for the funds in this wallet — write it down.
 

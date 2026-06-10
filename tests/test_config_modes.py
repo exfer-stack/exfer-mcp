@@ -128,11 +128,21 @@ def test_managed_autodetect_on_path(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert cfg.binary == str(binary)
 
 
-def test_managed_autodetect_missing_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_managed_autodetect_falls_back_to_autodownload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # No EXFER_WALLETD_BIN and nothing on PATH → managed mode auto-downloads a
+    # verified prebuilt walletd instead of erroring (zero-setup).
+    monkeypatch.delenv("EXFER_WALLETD_BIN", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path))  # empty dir, no binary
     monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
-    with pytest.raises(ConfigError, match="could not find"):
-        ManagedConfig.from_env()
+    fake = tmp_path / "downloaded-walletd"
+    fake.write_text("#!/bin/sh\n")
+    import exfer_mcp.walletd_fetch as wf
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", lambda: fake)
+    cfg = ManagedConfig.from_env()
+    assert cfg.binary == str(fake)
 
 
 def test_managed_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -124,13 +124,16 @@ class ManagedConfig:
                 )
         else:
             found = shutil.which(DEFAULT_WALLETD_BIN)
-            if not found:
-                raise ConfigError(
-                    f"managed mode: could not find {DEFAULT_WALLETD_BIN!r} on PATH. "
-                    "Install exfer-walletd, or set EXFER_WALLETD_BIN to its full path. "
-                    "(Or run in EXTERNAL mode by setting WALLETD_URL.)"
-                )
-            binary = found
+            if found:
+                binary = found
+            else:
+                # Zero-setup: fetch + verify a prebuilt walletd for this
+                # platform (cached after first use). Lazy import avoids a
+                # config <-> walletd_fetch cycle. Raises a clear ConfigError
+                # if the binary can't be downloaded or verified.
+                from .walletd_fetch import ensure_walletd_binary
+
+                binary = str(ensure_walletd_binary())
 
         passphrase = os.environ.get("WALLETD_KEYSTORE_PASSPHRASE")
         if not passphrase:
