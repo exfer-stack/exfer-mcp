@@ -46,6 +46,35 @@ def json_text(result: object) -> mcp_types.TextContent:
     return text(json.dumps(result, indent=2, sort_keys=True))
 
 
+_NODE_HINT = (
+    " — the upstream Exfer node looks unreachable from here; set EXFER_NODE_RPC "
+    "to a node you can reach (or run one locally), then retry."
+)
+
+
+def _looks_node_unreachable(exc: Exception) -> bool:
+    """Heuristic: does this error mean walletd couldn't reach its upstream node?"""
+    if getattr(exc, "code", None) == -32020:  # UpstreamUnreachable
+        return True
+    s = str(exc).lower()
+    return any(
+        k in s
+        for k in (
+            "upstream",
+            "unreachable",
+            "502",
+            "503",
+            "504",
+            "connection refused",
+            "econnrefused",
+            "timed out",
+            "no route",
+            "getaddrinfo",
+            "name resolution",
+        )
+    )
+
+
 def render_error(exc: Exception) -> list[mcp_types.TextContent]:
     """Map a walletd-side exception to text the agent can act on.
 
@@ -83,9 +112,10 @@ def render_error(exc: Exception) -> list[mcp_types.TextContent]:
                 f"walletd code {exc.code}: {exc.message}"
             )
         ]
+    hint = _NODE_HINT if _looks_node_unreachable(exc) else ""
     if isinstance(exc, ExferError):
         code = getattr(exc, "code", None)
         if code is not None:
-            return [text(f"walletd error (code {code}): {exc}")]
-        return [text(f"walletd error: {exc}")]
-    return [text(f"{type(exc).__name__}: {exc}")]
+            return [text(f"walletd error (code {code}): {exc}{hint}")]
+        return [text(f"walletd error: {exc}{hint}")]
+    return [text(f"{type(exc).__name__}: {exc}{hint}")]

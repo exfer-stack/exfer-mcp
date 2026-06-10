@@ -694,10 +694,39 @@ class WalletdSupervisor:
 
         # Timed out — tear down the half-started child so we don't orphan it.
         self.stop()
+        node = self._config.node_rpc
+        low = last_err.lower()
+        node_unreachable = any(
+            s in low
+            for s in (
+                "-32020",
+                "upstream",
+                "unreachable",
+                "refused",
+                "timed out",
+                "timeout",
+                "502",
+                "503",
+                "504",
+                "no route",
+                "getaddrinfo",
+                "name resolution",
+            )
+        )
+        if node_unreachable:
+            hint = (
+                f"the upstream Exfer node is unreachable from here (node_rpc={node}). "
+                "Set EXFER_NODE_RPC to a node you can reach, or run one locally."
+            )
+        else:
+            hint = (
+                f"check the [walletd] log above — likely an unreachable node "
+                f"(node_rpc={node}; override with EXFER_NODE_RPC) or a wrong "
+                "WALLETD_KEYSTORE_PASSPHRASE."
+            )
         raise ConfigError(
             f"managed walletd did not become ready within {_READY_TIMEOUT_SECS:.0f}s "
-            f"(last health probe: {last_err}). Check the [walletd] log above — common "
-            "causes are an unreachable EXFER_NODE_RPC or a wrong WALLETD_KEYSTORE_PASSPHRASE."
+            f"(last health probe: {last_err}). {hint}"
         )
 
     @staticmethod
