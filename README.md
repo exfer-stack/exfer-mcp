@@ -2,7 +2,7 @@
 
 Model Context Protocol server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain. Gives an AI agent (Claude Desktop, Claude Code, any MCP-aware host) typed, direct access to an [`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd) hot wallet.
 
-> **Warning — this is a hot wallet.** Anything that can talk to this MCP server can spend funds — there are no per-period caps, no human-approval gates, no rate limits beyond walletd's own. Until walletd ships the v1.10 allowance ledger, run `exfer-mcp` only against accounts you would be okay losing in full.
+> **Warning — this is a hot wallet.** By default there are no spend caps and no human-approval gates: anything that can talk to this MCP server can spend the wallet in full. Recent `exfer-walletd` adds **operator-configured spend ceilings** — set `WALLETD_SPEND_CAP_PER_TX` (max per spend) and/or `WALLETD_SPEND_CAP_PER_PERIOD` + `WALLETD_SPEND_CAP_PERIOD_SECS` (rolling-window total), in exfers. In managed mode the spawned walletd inherits these from the MCP host's environment, so setting them in your host config bounds the blast radius. Until you configure caps (or unless you only keep a small float here), run `exfer-mcp` only against accounts you would be okay losing in full.
 
 ## What it exposes
 
@@ -261,7 +261,7 @@ The simulate-first pattern means the agent always knows the cost before committi
 ## Safety
 
 - `WALLETD_AUTH_TOKEN` is **all-or-nothing access to the wallet**. Treat it like a payment-card number.
-- `exfer-mcp` does no per-call confirmation by itself — that's the host's job. If you need spend caps, configure them on the walletd side (planned for v1.10) or run a walletd that only holds a small float you would be comfortable losing.
+- `exfer-mcp` does no per-call confirmation by itself — that's the host's job. For spend caps, configure them on the walletd side with `--spend-cap-per-tx` / `--spend-cap-per-period` (or the `WALLETD_SPEND_CAP_*` env vars; the managed walletd inherits them from this process's environment). A spend that would breach a cap is refused before broadcast with `AllowanceExceeded` (`-32038`). Caps default to unlimited, so also consider running a walletd that only holds a small float you would be comfortable losing.
 - The MCP transport is stdio. The agent does not see the wire token; only this process does.
 - Errors from walletd surface as MCP `isError=true` content the agent reads and reacts to, including specific cases like `InsufficientBalanceError` (over-spend) and `WaitTimeoutError` (confirmation depth not reached in time).
 - **Managed mode is also a hot wallet.** The walletd exfer-mcp spawns binds **loopback only** and its bearer tokens never leave the local machine — exfer-mcp also **redacts** any 64-hex token from walletd's forwarded `[walletd]` log lines, so the first-run spend token never lands in the host's stderr log file. Anything that can reach the MCP server can still spend its funds. The 24-word recovery phrase is printed to stderr **once**, on first run (`BACK UP THIS RECOVERY PHRASE`) — it is the **only** backup for that wallet, so write it down then. Treat `WALLETD_KEYSTORE_PASSPHRASE` and the contents of `WALLETD_DATADIR` (default `~/.exfer-walletd-mcp`) as wallet secrets, and keep only a float you'd be comfortable losing in the managed wallet.

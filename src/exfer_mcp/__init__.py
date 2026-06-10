@@ -11,10 +11,13 @@ for the exact host-config stanza.
 
 .. warning::
 
-   This is a hot wallet. Anything that can talk to this MCP server can
-   spend funds from the wired ``WALLETD_AUTH_TOKEN``. Run only against
-   accounts you would be okay losing in full until walletd ships
-   per-period allowance caps (tracked at exfer-walletd v1.10).
+   This is a hot wallet. By default anything that can talk to this MCP
+   server can spend the wallet in full. Bound the blast radius with
+   walletd's spend caps — set ``WALLETD_SPEND_CAP_PER_TX`` and/or
+   ``WALLETD_SPEND_CAP_PER_PERIOD`` (+ ``WALLETD_SPEND_CAP_PERIOD_SECS``)
+   in exfers; the managed walletd inherits them from this process's
+   environment. Until you do, run only against accounts you would be okay
+   losing in full.
 """
 
 from __future__ import annotations
