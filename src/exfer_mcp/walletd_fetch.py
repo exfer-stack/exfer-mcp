@@ -27,10 +27,10 @@ from .config import ConfigError
 WALLETD_REPO = "exfer-stack/exfer-walletd"
 
 # Pinned known-good walletd release. Override with ``EXFER_WALLETD_VERSION``.
-# MUST be a release that publishes ``SHA256SUMS`` (added to walletd's release
-# workflow) — auto-download refuses to run an unverifiable hot-wallet binary,
-# so bump this to the first checksummed release to enable zero-setup fetch.
-DEFAULT_WALLETD_VERSION = "v1.13.3"
+# MUST be a release that publishes ``SHA256SUMS`` — auto-download refuses to run
+# an unverifiable hot-wallet binary. v1.14.0 is the first checksummed release
+# and carries the RPCs this MCP needs (EXFER-QUOTE, HTLC indexer delegation).
+DEFAULT_WALLETD_VERSION = "v1.14.0"
 
 _DOWNLOAD_TIMEOUT_SECS = 180
 
