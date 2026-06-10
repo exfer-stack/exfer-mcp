@@ -29,6 +29,9 @@ classifiers = [
 dependencies = [
     "exfer>=0.10.0,<1.0",
     "mcp>=1.0,<2.0",
+    # Cross-platform process inspection/termination for the managed-walletd
+    # orphan reaper (Linux/macOS/Windows) — replaces the old /proc-only path.
+    "psutil>=5.9",
 ]
 
 [project.scripts]
@@ -50,6 +53,7 @@ dev = [
     "respx>=0.21",
     "mypy>=1.10,<2.0",
     "ruff>=0.5",
+    "types-psutil",
 ]
 
 [tool.hatch.version]

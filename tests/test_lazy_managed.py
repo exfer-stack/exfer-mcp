@@ -14,7 +14,6 @@ deterministically and the timing assertions stay fast and stable.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -414,20 +413,48 @@ async def test_ensure_ready_retries_after_failure(
     assert attempts["n"] == 2, "ensure_ready should relaunch exactly one retry"
 
 
-def test_reap_is_safe_on_foreign_pid(tmp_path: Path) -> None:
-    # The reap must NOT kill a pid whose argv isn't an exfer-walletd on our
-    # datadir — e.g. our own process. (If the guard were wrong this test would
-    # SIGKILL the test runner.)
-    sup = WalletdSupervisor(_managed_cfg(tmp_path))
-    sup._config.datadir.mkdir(parents=True, exist_ok=True)
-    sup._reap_stale_walletd()  # no pidfile → no-op
-    sup._pidfile().write_text(str(os.getpid()))  # our pid: argv has no walletd
-    sup._reap_stale_walletd()  # must be a no-op; we stay alive
-    assert os.getpid() > 0
+class _FakeProc:
+    """Minimal psutil.Process stand-in for reap tests."""
+
+    def __init__(self, pid: int, cmdline: list[str]) -> None:
+        self.pid = pid
+        self.info = {"cmdline": cmdline}
+        self.killed = False
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
 
 
-def test_reap_is_safe_on_dead_pid(tmp_path: Path) -> None:
+def test_reap_kills_only_walletd_on_our_datadir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The scan must kill ONLY a live exfer-walletd whose argv references our
+    # datadir — never another datadir's walletd, never a non-walletd process.
+    import exfer_mcp.walletd_supervisor as mod
+
     sup = WalletdSupervisor(_managed_cfg(tmp_path))
-    sup._config.datadir.mkdir(parents=True, exist_ok=True)
-    sup._pidfile().write_text("2147483646")  # almost certainly not a live pid
-    sup._reap_stale_walletd()  # no live process → no-op, no raise
+    dd = str(sup._config.datadir)
+    other_dd = _FakeProc(101, ["/x/exfer-walletd", "--datadir", "/some/other/dir"])
+    not_walletd = _FakeProc(102, ["python", "-m", "http.server", dd])  # has dd, not walletd
+    prefix_dd = _FakeProc(103, ["/x/exfer-walletd", "--datadir", dd + "-sibling"])  # prefix, not exact
+    match = _FakeProc(104, ["/x/exfer-walletd", "--datadir", dd, "--bind", "127.0.0.1:1"])
+    monkeypatch.setattr(
+        mod.psutil, "process_iter", lambda attrs=None: iter([other_dd, not_walletd, prefix_dd, match])
+    )
+
+    sup._reap_stale_walletd()
+
+    assert not other_dd.killed, "must not touch a walletd on another datadir"
+    assert not not_walletd.killed, "must not touch a non-walletd process"
+    assert not prefix_dd.killed, "must match the datadir as an exact argv element, not a prefix"
+    assert match.killed, "must kill the walletd holding OUR datadir"
+
+
+def test_reap_noop_on_clean_datadir(tmp_path: Path) -> None:
+    # Real psutil scan over the live process table: a fresh tmp datadir matches
+    # nothing, so the reap is a harmless no-op (and never raises).
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    sup._reap_stale_walletd()

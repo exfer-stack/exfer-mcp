@@ -51,6 +51,8 @@ from collections.abc import Callable
 from pathlib import Path
 from types import FrameType
 
+import psutil
+
 from .config import ConfigError, ManagedConfig
 
 # typeshed's signal-handler type: a Python callable, one of the special
@@ -150,16 +152,19 @@ def _redact_secrets(line: str) -> str:
 
 # --- orphan-cleanup primitives ---------------------------------------------
 #
-# Managed mode runs one walletd per datadir. Three reinforcing mechanisms keep
-# a walletd from outliving its MCP server and wedging the next session on the
-# datadir's DB lock:
-#   1. PR_SET_PDEATHSIG — the kernel SIGKILLs walletd when the server dies,
-#      even on an un-catchable SIGKILL where atexit/signal cleanup can't run.
-#   2. a pid-file reap on bring-up — kills any walletd left holding *our*
-#      datadir by a prior hard-killed session (covers the residual window and
-#      pre-existing orphans).
+# Managed mode runs one walletd per datadir. Three reinforcing, cross-platform
+# mechanisms keep a walletd from outliving its MCP server and wedging the next
+# session on the datadir's DB lock:
+#   1. PR_SET_PDEATHSIG (Linux only) — the kernel SIGKILLs walletd the instant
+#      the server dies, even on an un-catchable SIGKILL. A best-effort bonus;
+#      macOS/Windows have no equivalent and rely on (2).
+#   2. a process-scan reap on bring-up (psutil, ALL platforms) — before opening
+#      the datadir, SIGKILL any live exfer-walletd whose argv references THIS
+#      datadir (an orphan from a prior hard-killed session). This is the
+#      portable backbone: it clears orphans on macOS/Windows too, where
+#      pdeathsig is a no-op.
 #   3. ensure_ready() retry — relaunches a fresh bring-up after a failure, so a
-#      cleared cause (or a spurious pdeathsig kill) self-heals.
+#      cleared cause (reaped orphan, or a spurious pdeathsig kill) self-heals.
 _PR_SET_PDEATHSIG = 1
 _LIBC: ctypes.CDLL | None
 try:
@@ -167,29 +172,11 @@ try:
 except OSError:  # pragma: no cover - non-glibc / non-Linux
     _LIBC = None
 
-# Name of the file (under the datadir) recording the managed walletd's pid.
-_PIDFILE_NAME = "walletd-mcp.pid"
-
 
 def _set_pdeathsig() -> None:  # pragma: no cover - runs in the forked child
-    """preexec_fn: ask the kernel to SIGKILL this child if its parent dies."""
+    """preexec_fn (Linux): SIGKILL this child if its parent process dies."""
     if _LIBC is not None:
         _LIBC.prctl(_PR_SET_PDEATHSIG, signal.SIGKILL)
-
-
-def _proc_cmdline(pid: int) -> str | None:
-    """Return ``pid``'s argv (NULs→spaces) via /proc, or None if not readable.
-
-    None means the pid is dead, unreadable, or /proc is absent (non-Linux) —
-    in every such case the reap treats it as "nothing to kill".
-    """
-    if pid <= 1:
-        return None
-    try:
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
-    except (FileNotFoundError, OSError, ProcessLookupError):
-        return None
-    return raw.replace(b"\0", b" ").decode("utf-8", "replace")
 
 
 class WalletdSupervisor:
@@ -506,40 +493,41 @@ class WalletdSupervisor:
         env["WALLETD_KEYSTORE_PASSPHRASE"] = self._config.keystore_passphrase
         return env
 
-    def _pidfile(self) -> Path:
-        return self._config.datadir / _PIDFILE_NAME
-
     def _reap_stale_walletd(self) -> None:
-        """Kill a walletd left holding our datadir by a prior hard-killed run.
+        """Kill any live walletd holding our datadir, left by a prior run.
 
-        Reads the pid we recorded last time (``<datadir>/walletd-mcp.pid``)
-        and SIGKILLs it ONLY if it is still a live ``exfer-walletd`` whose
-        argv references *this* datadir — so PID reuse, a dead pid, or another
-        datadir's walletd are all left untouched. Without this, an orphan from
-        a SIGKILLed session keeps the redb lock and every later bring-up fails
-        with "Database already open".
+        Portable (psutil) — works on Linux/macOS/Windows, unlike the old
+        ``/proc`` reader. Managed mode runs one walletd per datadir, so any
+        ``exfer-walletd`` process whose argv references THIS datadir (other
+        than our own current child) is a stale owner: an orphan from a
+        SIGKILLed session keeps the redb lock and would fail every later
+        bring-up with "Database already open". The datadir is matched as an
+        exact argv element (not a substring) so a sibling datadir sharing a
+        path prefix is never touched.
         """
-        try:
-            raw = self._pidfile().read_text().strip()
-        except (FileNotFoundError, OSError):
-            return
-        if not raw.isdigit():
-            return
-        pid = int(raw)
-        cmd = _proc_cmdline(pid)
-        if cmd is None or "exfer-walletd" not in cmd or str(self._config.datadir) not in cmd:
-            return
-        _eprint(
-            f"[walletd] reaping orphaned walletd pid={pid} holding {self._config.datadir} "
-            "(left by a prior hard-killed session)"
-        )
-        with contextlib.suppress(ProcessLookupError, OSError):
-            os.kill(pid, signal.SIGKILL)
-        # Wait (up to ~3s) for the OS to release the datadir's DB lock.
-        for _ in range(60):
-            if _proc_cmdline(pid) is None:
-                break
-            time.sleep(0.05)
+        datadir = str(self._config.datadir)
+        own_pid = self._proc.pid if self._proc is not None else None
+        reaped: list[psutil.Process] = []
+        for proc in psutil.process_iter(["cmdline"]):
+            if proc.pid == own_pid:
+                continue
+            try:
+                cmdline = proc.info.get("cmdline") or []
+            except (psutil.Error, OSError):
+                continue
+            if not any("exfer-walletd" in arg for arg in cmdline) or datadir not in cmdline:
+                continue
+            _eprint(
+                f"[walletd] reaping orphaned walletd pid={proc.pid} holding {datadir} "
+                "(left by a prior hard-killed session)"
+            )
+            with contextlib.suppress(psutil.Error, OSError):
+                proc.kill()
+            reaped.append(proc)
+        # Wait (up to ~3s each) for the OS to release the datadir's DB lock.
+        for proc in reaped:
+            with contextlib.suppress(psutil.Error, OSError):
+                proc.wait(timeout=3)
 
     def _spawn(self, bind: str) -> None:
         argv = self._build_argv(bind)
@@ -554,11 +542,10 @@ class WalletdSupervisor:
                 # also hit the child out-of-band; we deliver signals to it
                 # ourselves in stop().
                 start_new_session=True,
-                # Linux: have the kernel SIGKILL walletd if this server dies —
-                # the orphan-proofing that survives an un-catchable SIGKILL.
-                # No-op where unsupported (preexec only runs on POSIX; the
-                # prctl itself no-ops without glibc).
-                preexec_fn=_set_pdeathsig if os.name == "posix" else None,
+                # Linux bonus: have the kernel SIGKILL walletd if this server
+                # dies, even on an un-catchable SIGKILL. macOS/Windows have no
+                # equivalent and rely on the psutil scan-reap at next bring-up.
+                preexec_fn=_set_pdeathsig if sys.platform.startswith("linux") else None,
             )
         except FileNotFoundError as exc:
             raise ConfigError(
@@ -583,11 +570,6 @@ class WalletdSupervisor:
 
         self._log_thread = threading.Thread(target=self._forward_logs, args=(proc,), daemon=True)
         self._log_thread.start()
-
-        # Record the pid so the NEXT bring-up (this session or a future one)
-        # can reap this walletd if we are hard-killed before stop() runs.
-        with contextlib.suppress(OSError):
-            self._pidfile().write_text(str(proc.pid))
 
     def _forward_logs(self, proc: subprocess.Popen[bytes]) -> None:
         """Forward walletd's combined output to our stderr with a prefix.
