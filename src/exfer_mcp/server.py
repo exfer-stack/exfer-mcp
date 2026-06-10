@@ -25,8 +25,20 @@ from mcp.server.stdio import stdio_server
 
 from ._version import __version__
 from .config import Config, ConfigError, ManagedConfig, managed_mode_selected
-from .tools import HANDLERS, TOOLS
+from .tools import HANDLERS, NO_WALLETD_TOOLS, TOOLS
+from .update_check import startup_notice
 from .walletd_supervisor import WalletdSupervisor
+
+# Surfaced to the host at the MCP handshake (InitializationOptions.instructions)
+# — many hosts pass this to the model as context.
+SERVER_INSTRUCTIONS = (
+    "exfer-mcp gives you typed tools to operate an Exfer wallet. The wallet is "
+    "spendable with NO per-transaction human approval, so confirm the amount and "
+    "destination with the user before exfer_transfer / exfer_htlc_*. On first use, "
+    "or whenever the user asks about updates, call exfer_check_update; if it reports "
+    "update_available or current_version_yanked, tell the user and relay how_to_update. "
+    "Updating never touches the wallet's keys."
+)
 
 SERVER_NAME = "exfer-mcp"
 
@@ -62,6 +74,11 @@ def build_server(provider: ClientProvider) -> Server[None, Any]:
             # exception → isError path. The MCP SDK turns a raised
             # exception into a structured error visible to the agent.
             raise ValueError(f"unknown tool: {name}")
+        if name in NO_WALLETD_TOOLS:
+            # Pure / meta tools (e.g. exfer_check_update) need no walletd — skip
+            # the readiness gate so they work even while walletd is down. These
+            # handlers ignore the client/config arguments.
+            return await handler(None, arguments, None)  # type: ignore[arg-type]
         # Lazy gate: in managed mode this awaits walletd readiness (only the
         # first call is slow; later calls return immediately). A readiness
         # failure raises ConfigError, which the SDK renders as a tool error
@@ -120,6 +137,10 @@ async def _run() -> None:
 async def _serve(provider: ClientProvider) -> None:
     """Open stdio and run the MCP server loop with the given client provider."""
     server = build_server(provider)
+    # Best-effort, non-blocking: notify the operator (stderr) of a newer / yanked
+    # release. Never blocks serving; never auto-applies. Held in a local so the
+    # task isn't GC'd while pending.
+    notice_task = asyncio.create_task(_emit_startup_update_notice())
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
@@ -127,12 +148,21 @@ async def _serve(provider: ClientProvider) -> None:
             InitializationOptions(
                 server_name=SERVER_NAME,
                 server_version=__version__,
+                instructions=SERVER_INSTRUCTIONS,
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
                 ),
             ),
         )
+    notice_task.cancel()
+
+
+async def _emit_startup_update_notice() -> None:
+    """Print a one-line stderr notice if an update is available / version yanked."""
+    notice = await asyncio.to_thread(startup_notice)
+    if notice:
+        print(notice, file=sys.stderr, flush=True)
 
 
 async def _run_external() -> None:

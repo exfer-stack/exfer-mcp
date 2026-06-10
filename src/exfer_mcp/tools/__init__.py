@@ -66,6 +66,10 @@ from .transfer import (
     simulate_transfer,
     transfer,
 )
+from .update import (
+    CHECK_UPDATE_TOOL,
+    check_update,
+)
 from .wait import (
     WAIT_FOR_PAYMENT_TOOL,
     WAIT_FOR_TX_TOOL,
@@ -73,7 +77,7 @@ from .wait import (
     wait_for_tx,
 )
 
-__all__ = ["HANDLERS", "TOOLS"]
+__all__ = ["HANDLERS", "NO_WALLETD_TOOLS", "TOOLS"]
 
 # Order matters for the `list_tools` response: the agent reads top-down
 # when picking which tool to call, so we put preflight + read tools
@@ -106,6 +110,8 @@ TOOLS: list[mcp_types.Tool] = [
     # honor read-back (EXFER-QUOTE settlement verify / reverse-lookup)
     GET_OUTPUT_DATUM_TOOL,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
+    # meta: update check (no wallet access)
+    CHECK_UPDATE_TOOL,
 ]
 
 HANDLERS: dict[str, ToolHandler] = {
@@ -131,4 +137,10 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
     GET_OUTPUT_DATUM_TOOL.name: get_output_datum,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL.name: find_settlements_by_quote_id,
+    CHECK_UPDATE_TOOL.name: check_update,
 }
+
+# Tools that need NO walletd (pure / meta) — the server dispatches these without
+# the managed-walletd readiness gate, so e.g. an update check works even when
+# walletd is down.
+NO_WALLETD_TOOLS: frozenset[str] = frozenset({CHECK_UPDATE_TOOL.name})

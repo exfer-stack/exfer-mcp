@@ -107,9 +107,29 @@ async def test_list_tools_returns_immediately_while_walletd_not_ready() -> None:
     tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
     elapsed = time.monotonic() - started
 
-    assert len(tools) == 22
+    assert len(tools) == 23
     assert not provider_called, "list_tools must never touch the walletd provider"
     assert elapsed < _HANDSHAKE_BUDGET_SECS
+
+
+async def test_check_update_tool_bypasses_walletd_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    # exfer_check_update must work without (and not block on) walletd readiness —
+    # otherwise you couldn't check for updates while walletd is down.
+    monkeypatch.setenv("EXFER_MCP_NO_UPDATE_CHECK", "1")  # deterministic, no network
+    provider_called = False
+
+    async def never_ready_provider() -> tuple[Any, Config]:
+        nonlocal provider_called
+        provider_called = True
+        await asyncio.Event().wait()  # blocks forever
+        raise AssertionError("unreachable")
+
+    server = build_server(never_ready_provider)
+    result = await asyncio.wait_for(
+        _invoke_call_tool(server, "exfer_check_update", {}), timeout=_HANDSHAKE_BUDGET_SECS
+    )
+    assert result.isError is False
+    assert not provider_called, "update check must not gate on the walletd provider"
 
 
 async def test_handshake_non_blocking_with_unready_supervisor(
@@ -145,7 +165,7 @@ async def test_handshake_non_blocking_with_unready_supervisor(
 
     try:
         tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
-        assert len(tools) == 22
+        assert len(tools) == 23
         # The bring-up is genuinely still pending (not yet ready).
         assert sup._ready_event is not None and not sup._ready_event.is_set()
     finally:

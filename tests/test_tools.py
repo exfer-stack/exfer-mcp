@@ -61,7 +61,7 @@ def test_tool_count() -> None:
     # detect_in_chain_swaps) were removed as misleading — leaving raw
     # get_address_history only — bringing it to 22.
     # Every tool must have a handler.
-    assert len(TOOLS) == 22
+    assert len(TOOLS) == 23
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
