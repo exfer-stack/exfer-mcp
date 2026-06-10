@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 import respx
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 from exfer_mcp.config import Config
 from exfer_mcp.tools import HANDLERS, TOOLS
@@ -56,9 +56,12 @@ def test_tool_count() -> None:
     # EXFER-QUOTE pair (quote_issue + quote_verify) brought it to 20; the
     # ergonomics pass (list_addresses + get_block_height) brought it to 22;
     # the honor read-back pair (get_output_datum +
-    # find_settlements_by_quote_id) brought it to 24.
+    # find_settlements_by_quote_id) brought it to 24; then the two washable
+    # "trust score" reputation tools (get_attestation_edges,
+    # detect_in_chain_swaps) were removed as misleading — leaving raw
+    # get_address_history only — bringing it to 22.
     # Every tool must have a handler.
-    assert len(TOOLS) == 24
+    assert len(TOOLS) == 22
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 

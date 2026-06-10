@@ -51,12 +51,8 @@ from .quote import (
     quote_verify,
 )
 from .reputation import (
-    DETECT_IN_CHAIN_SWAPS_TOOL,
     GET_ADDRESS_HISTORY_TOOL,
-    GET_ATTESTATION_EDGES_TOOL,
-    detect_in_chain_swaps,
     get_address_history,
-    get_attestation_edges,
 )
 from .signing import (
     SIGN_MESSAGE_TOOL,
@@ -105,10 +101,8 @@ TOOLS: list[mcp_types.Tool] = [
     HTLC_RECLAIM_TOOL,
     HTLC_STATUS_TOOL,
     HTLC_LIST_TOOL,
-    # counterparty reputation / history
+    # counterparty history (raw timeline — interpret it yourself, not a score)
     GET_ADDRESS_HISTORY_TOOL,
-    GET_ATTESTATION_EDGES_TOOL,
-    DETECT_IN_CHAIN_SWAPS_TOOL,
     # honor read-back (EXFER-QUOTE settlement verify / reverse-lookup)
     GET_OUTPUT_DATUM_TOOL,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
@@ -135,8 +129,6 @@ HANDLERS: dict[str, ToolHandler] = {
     HTLC_STATUS_TOOL.name: htlc_status,
     HTLC_LIST_TOOL.name: htlc_list,
     GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
-    GET_ATTESTATION_EDGES_TOOL.name: get_attestation_edges,
-    DETECT_IN_CHAIN_SWAPS_TOOL.name: detect_in_chain_swaps,
     GET_OUTPUT_DATUM_TOOL.name: get_output_datum,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL.name: find_settlements_by_quote_id,
 }

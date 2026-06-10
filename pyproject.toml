@@ -22,12 +22,12 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-# Pinned to >=0.8 because the v0.1 tool surface uses simulate_transfer +
-# wait_for_tx + payment_uri_* — all walletd v1.9 methods that landed in
-# exfer-walletd 0.8.0. Drop the lower bound only when the MCP tool
-# surface stops using them.
+# The Python SDK's canonical PyPI package is now `exfer` (formerly published as
+# `exfer-walletd`; import name is `exfer`). 0.10.0 is the first release carrying
+# the full method surface the tools use (quote_issue/verify, sign_message,
+# wait_for_payment, get_address_history, …), so no git-pin override is needed.
 dependencies = [
-    "exfer-walletd>=0.8.0,<1.0",
+    "exfer>=0.10.0,<1.0",
     "mcp>=1.0,<2.0",
 ]
 
@@ -41,18 +41,7 @@ Homepage      = "https://github.com/exfer-stack/exfer-mcp"
 Repository    = "https://github.com/exfer-stack/exfer-mcp"
 "Bug Tracker" = "https://github.com/exfer-stack/exfer-mcp/issues"
 "exfer-walletd (Rust daemon)" = "https://github.com/exfer-stack/exfer-walletd"
-"exfer-walletd (Python SDK)"  = "https://github.com/exfer-stack/exfer-py"
-
-# --- TEMPORARY dependency-source override (remove on next exfer-py release) ---
-# The published PyPI exfer-walletd 0.8.0 predates quote_issue / quote_verify
-# (the EXFER-QUOTE tools added here call client.quote_issue / .quote_verify).
-# Pin the SDK to the exfer-py commit that carries them so a clean `uv sync`
-# is reproducible and the quote tools don't AttributeError at runtime. The
-# rev is the feat/quote-rpc head; repoint it to the merge commit (or delete
-# this block and bump the floor) once exfer-py cuts a release with these
-# methods on PyPI.
-[tool.uv.sources]
-exfer-walletd = { git = "https://github.com/exfer-stack/exfer-py.git", rev = "d2c1fe3e03ce270cc7381d449dc50c5acf6e83d1" }
+"exfer (Python SDK)"          = "https://github.com/exfer-stack/exfer-py"
 
 [project.optional-dependencies]
 dev = [

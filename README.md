@@ -40,8 +40,7 @@ Model Context Protocol server for the [Exfer](https://github.com/ahuman-exfer/ex
 | Tool | What it does |
 |---|---|
 | `exfer_htlc_lock` / `_claim` / `_reclaim` / `_status` / `_list` | Hash-time-locked contracts (atomic swaps) |
-| `exfer_get_address_history` | An address's on-chain activity (indexer-backed) |
-| `exfer_get_attestation_edges` / `exfer_detect_in_chain_swaps` | Counterparty reputation / swap detection (indexer-backed) |
+| `exfer_get_address_history` | An address's on-chain activity (indexer-backed) — raw history you interpret, not a trust score |
 
 > The reputation / history tools and non-owned HTLC lookups require walletd to be pointed at an `exfer-indexer` (it is, by default, in managed mode).
 

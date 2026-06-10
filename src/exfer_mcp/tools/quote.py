@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 import mcp.types as mcp_types
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 from ..config import Config
 from ._common import json_text, render_error

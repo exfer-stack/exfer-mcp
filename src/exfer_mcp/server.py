@@ -4,7 +4,7 @@ Spawned by an MCP host (Claude Desktop, Claude Code, …) as a subprocess.
 The host speaks the MCP wire protocol over our stdin / stdout via
 :func:`mcp.server.stdio.stdio_server`.
 
-We hold a single long-lived :class:`exfer_walletd.AsyncClient` for the
+We hold a single long-lived :class:`exfer.AsyncClient` for the
 lifetime of the process — httpx pools connections, so reusing the
 client across tool calls reuses the underlying TCP connection and TLS
 session.
@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import mcp.types as mcp_types
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server

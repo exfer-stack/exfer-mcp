@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 import respx
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 from exfer_mcp.config import Config
 

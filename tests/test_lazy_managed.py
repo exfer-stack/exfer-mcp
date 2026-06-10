@@ -50,7 +50,7 @@ class _Tip:
 
 
 class _FakeClient:
-    """Stand-in for exfer_walletd.AsyncClient at the tool-dispatch layer."""
+    """Stand-in for exfer.AsyncClient at the tool-dispatch layer."""
 
     def __init__(self) -> None:
         self.tip_calls = 0
@@ -106,7 +106,7 @@ async def test_list_tools_returns_immediately_while_walletd_not_ready() -> None:
     tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
     elapsed = time.monotonic() - started
 
-    assert len(tools) == 24
+    assert len(tools) == 22
     assert not provider_called, "list_tools must never touch the walletd provider"
     assert elapsed < _HANDSHAKE_BUDGET_SECS
 
@@ -144,7 +144,7 @@ async def test_handshake_non_blocking_with_unready_supervisor(
 
     try:
         tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
-        assert len(tools) == 24
+        assert len(tools) == 22
         # The bring-up is genuinely still pending (not yet ready).
         assert sup._ready_event is not None and not sup._ready_event.is_set()
     finally:

@@ -1,6 +1,6 @@
 """Shared tool-handler plumbing.
 
-Every tool handler accepts an :class:`exfer_walletd.AsyncClient`, a
+Every tool handler accepts an :class:`exfer.AsyncClient`, a
 ``dict[str, Any]`` of validated arguments, and a :class:`~..config.Config`
 (for defaults the agent didn't supply), and returns a list of
 ``TextContent`` blocks. Errors from walletd are caught here and
@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import mcp.types as mcp_types
-from exfer_walletd import (
+from exfer import (
     AsyncClient,
     ExferError,
     IndexerNotConfiguredError,
