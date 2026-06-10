@@ -11,8 +11,9 @@ for the exact host-config stanza.
 
 .. warning::
 
-   This is a hot wallet. By default anything that can talk to this MCP
-   server can spend the wallet in full. Bound the blast radius with
+   The agent can spend this wallet with no per-transaction human approval —
+   by default anything that can talk to this MCP server can spend it in
+   full. Bound the blast radius with
    walletd's spend caps — set ``WALLETD_SPEND_CAP_PER_TX`` and/or
    ``WALLETD_SPEND_CAP_PER_PERIOD`` (+ ``WALLETD_SPEND_CAP_PERIOD_SECS``)
    in exfers; the managed walletd inherits them from this process's

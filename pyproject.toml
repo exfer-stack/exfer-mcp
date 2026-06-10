@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name            = "exfer-mcp"
 dynamic         = ["version"]
-description     = "Model Context Protocol server for the Exfer blockchain — gives an AI agent direct, typed access to an exfer-walletd hot wallet"
+description     = "Model Context Protocol server that lets an AI agent spend from an Exfer wallet — typed tools over exfer-walletd, with no per-transaction human approval"
 readme          = "README.md"
 license         = { text = "MIT" }
 requires-python = ">=3.10,<3.14"

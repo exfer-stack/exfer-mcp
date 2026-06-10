@@ -13,7 +13,7 @@ check would be theater. Instead the expected digests are pinned in
 :data:`_PINNED_SHA256` here. The only thing that can change them is a new
 exfer-mcp release, published to PyPI via Trusted Publishing (OIDC, no long-lived
 token) — that provenance is the independent trust anchor. The binary is a
-hot-wallet daemon, so it is executed ONLY after its bytes match the baked
+key-holding daemon that can spend funds, so it is executed ONLY after its bytes match the baked
 digest, the cached copy is re-verified on EVERY run (never trusted blindly), and
 the cache is created ``0o700``. An unpinned version, or any mismatch, is refused;
 ``EXFER_WALLETD_BIN`` always lets the operator supply a binary they built/trust.
@@ -119,7 +119,7 @@ def _expected_sha256(version: str, asset: str) -> str:
     """Return the SHA-256 baked into this exfer-mcp release for ``asset``.
 
     Refuses (no network fallback) if the version/asset isn't pinned — running an
-    unverifiable hot-wallet binary is never an automatic behaviour.
+    unverifiable key-holding binary is never an automatic behaviour.
     """
     try:
         return _PINNED_SHA256[version][asset]
@@ -148,7 +148,7 @@ def ensure_walletd_binary() -> Path:
     suffix = ".exe" if asset.endswith(".exe") else ""
     dest = cache / f"exfer-walletd{suffix}"
 
-    # Never trust a cached hot-wallet binary blindly — re-hash it every run, so a
+    # Never trust a cached key-holding binary blindly — re-hash it every run, so a
     # binary tampered with on disk after caching is caught and re-fetched.
     if dest.exists():
         if _sha256_file(dest) == expected:
@@ -171,7 +171,7 @@ def ensure_walletd_binary() -> Path:
     if actual != expected:
         raise ConfigError(
             f"managed mode: downloaded exfer-walletd {asset} has sha256 {actual}, but "
-            f"exfer-mcp pins {expected} — refusing to run an unverified hot-wallet binary. "
+            f"exfer-mcp pins {expected} — refusing to run an unverified key-holding binary. "
             "Set EXFER_WALLETD_BIN to a binary you trust."
         )
 

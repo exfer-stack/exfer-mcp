@@ -1,7 +1,8 @@
 # Security
 
-`exfer-mcp` drives a **hot wallet** on the Exfer mainnet. Anything that can reach
-the MCP server can spend it. Treat it accordingly.
+`exfer-mcp` lets an AI agent spend from an Exfer mainnet wallet **with no
+per-transaction human approval**. Anything that can reach the MCP server — the
+agent, or a prompt-injection of it — can move the funds. Treat it accordingly.
 
 ## Trust model
 

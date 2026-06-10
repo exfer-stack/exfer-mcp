@@ -84,7 +84,7 @@ _LOG_TAIL_LINES = 14
 # plaintext on first-run init. Each is 64 lowercase hex chars. We forward
 # walletd's stdout/stderr to the MCP host's stderr (which hosts like Claude
 # Desktop persist to durable log files), so we MUST redact any token before
-# it lands in a log: the spend token grants full hot-wallet spend authority.
+# it lands in a log: the spend token grants full spend authority over the wallet.
 # Match a run of 64 hex chars not flanked by other hex chars (so we don't
 # clip block hashes mid-word — those are also surfaced, but a 64-hex token
 # on its own is what leaks). 32 lead chars are kept for debuggability.
@@ -141,7 +141,7 @@ def _redact_secrets(line: str) -> str:
     walletd prints its scoped read/manage/SPEND tokens in plaintext on
     first-run init; forwarding them verbatim to the host's stderr (which
     Claude Desktop persists to durable log files) would leak full
-    hot-wallet spend authority. We replace every 64-hex run with a short
+    full spend authority over the wallet. We replace every 64-hex run with a short
     keep-prefix + ``…REDACTED`` so the line stays useful for debugging but
     carries no usable secret. Block hashes are also 64-hex and get masked
     too; that's acceptable — a forwarded log line is not where you should
@@ -550,7 +550,7 @@ class WalletdSupervisor:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write(
                     "EXFER managed wallet — recovery phrase.\n"
-                    "This is the ONLY backup for this HOT WALLET's funds. Copy the words\n"
+                    "This is the ONLY backup for this wallet's funds. Copy the words\n"
                     "below somewhere offline, then DELETE this file.\n\n"
                     f"{body}\n"
                 )
@@ -560,13 +560,13 @@ class WalletdSupervisor:
             # Last resort only: file unwritable → surface to stderr so it's not lost.
             _eprint(bar)
             _eprint(f"  BACK UP THIS RECOVERY PHRASE (could not write {phrase_path}: {exc}).")
-            _eprint("  It is the ONLY backup for this hot wallet:")
+            _eprint("  It is the ONLY backup for this wallet:")
             _eprint(f"  {body}")
             _eprint(bar)
             return
         _eprint("")
         _eprint(bar)
-        _eprint("  RECOVERY PHRASE SAVED — back up the only copy of this hot wallet")
+        _eprint("  RECOVERY PHRASE SAVED — back up the only copy of this wallet")
         _eprint(f"  Written (mode 0600) to: {phrase_path}")
         _eprint("  Copy the 24 words offline, then DELETE that file.")
         _eprint("  (Not printed here — so it never lands in host logs.)")
