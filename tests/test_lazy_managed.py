@@ -414,6 +414,56 @@ async def test_ensure_ready_retries_after_failure(
     assert attempts["n"] == 2, "ensure_ready should relaunch exactly one retry"
 
 
+async def test_ensure_ready_does_not_retry_permanent_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A permanent cause (wrong passphrase) must NOT respawn — fast-fail at once.
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    attempts = {"n": 0}
+
+    async def perm_bring_up(url: str) -> None:
+        event = sup._ready_event
+        assert event is not None
+        attempts["n"] += 1
+        sup._ready_error = ConfigError("managed wallet unavailable: could not be unlocked (passphrase)")
+        sup._failure_count += 1
+        sup._last_failure_at = time.monotonic()
+        event.set()
+
+    monkeypatch.setattr(sup, "_bring_up", perm_bring_up)
+    sup.start_background()
+    with pytest.raises(ConfigError, match="could not be unlocked"):
+        await sup.ensure_ready()
+    assert attempts["n"] == 1, "a permanent (passphrase) error must not respawn"
+
+
+async def test_ensure_ready_backs_off_after_repeated_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A transient-looking but persistent cause (node unreachable) gets one free
+    # retry, then backs off — no respawn-storm on every tool call.
+    sup = WalletdSupervisor(_managed_cfg(tmp_path))
+    attempts = {"n": 0}
+
+    async def fail_bring_up(url: str) -> None:
+        event = sup._ready_event
+        assert event is not None
+        attempts["n"] += 1
+        sup._ready_error = ConfigError("node unreachable")
+        sup._failure_count += 1
+        sup._last_failure_at = time.monotonic()
+        event.set()
+
+    monkeypatch.setattr(sup, "_bring_up", fail_bring_up)
+    sup.start_background()
+    with pytest.raises(ConfigError):
+        await sup.ensure_ready()  # attempt 1 (free retry) -> attempt 2 -> raise
+    assert attempts["n"] == 2
+    with pytest.raises(ConfigError):
+        await sup.ensure_ready()  # within backoff window: must NOT respawn
+    assert attempts["n"] == 2, "within the backoff window there must be no new spawn"
+
+
 class _FakeProc:
     """Minimal psutil.Process stand-in for reap tests."""
 

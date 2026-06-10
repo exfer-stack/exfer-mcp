@@ -72,6 +72,11 @@ _READY_POLL_INTERVAL_SECS = 0.25
 # Grace period between SIGTERM and SIGKILL on shutdown.
 _TERM_GRACE_SECS = 5.0
 
+# Retry pacing: after the first (free) retry, back off so a permanent cause
+# (unreachable node, etc.) can't make every tool call respawn walletd.
+_RETRY_BACKOFF_BASE_SECS = 5.0
+_RETRY_BACKOFF_MAX_SECS = 60.0
+
 # How many recent walletd log lines to retain for diagnosing a startup exit.
 _LOG_TAIL_LINES = 14
 
@@ -230,6 +235,10 @@ class WalletdSupervisor:
         self._token: str | None = None
         self._bringup_task: asyncio.Task[None] | None = None
         self._bringup_started = False
+        # Retry pacing (ensure_ready): consecutive bring-up failures + when the
+        # last one happened, so a permanent cause can't respawn-storm walletd.
+        self._failure_count = 0
+        self._last_failure_at = 0.0
 
     @property
     def bind(self) -> str:
@@ -301,8 +310,11 @@ class WalletdSupervisor:
             # tool error instead of hanging. CancelledError (a BaseException)
             # is deliberately NOT caught — it propagates to cancel the task.
             self._ready_error = exc
+            self._failure_count += 1
+            self._last_failure_at = time.monotonic()
         else:
             self._token = token
+            self._failure_count = 0
             _eprint(f"[walletd] ready at {url} (managed)")
         finally:
             event.set()
@@ -365,14 +377,53 @@ class WalletdSupervisor:
                 return self._ready_event
             if self._stopped:
                 return failed_event
+            # A permanent cause (e.g. wrong passphrase) can't be fixed by a fresh
+            # spawn — fast-fail with the recorded error, never respawn.
+            if self._error_is_permanent():
+                return failed_event
+            # Back off after the first (free) retry so a still-broken cause
+            # (unreachable node, …) doesn't respawn walletd on every tool call.
+            backoff = self._retry_backoff_secs()
+            if backoff > 0.0 and (time.monotonic() - self._last_failure_at) < backoff:
+                return failed_event
             _eprint("[walletd] previous bring-up failed — retrying managed walletd startup...")
+            self._terminate_proc()  # don't orphan a half-live previous attempt
             self._ready_error = None
             self._token = None
-            self._proc = None  # the failed attempt's walletd is already dead
             new_event = asyncio.Event()
             self._ready_event = new_event
         self._bringup_task = asyncio.create_task(self._bring_up(self.choose_bind()))
         return new_event
+
+    def _error_is_permanent(self) -> bool:
+        """True if the recorded bring-up error can't be fixed by respawning."""
+        msg = str(self._ready_error or "").lower()
+        return any(s in msg for s in ("passphrase", "could not be unlocked", "decryption failed"))
+
+    def _retry_backoff_secs(self) -> float:
+        """Backoff before the next respawn. First failure → 0 (retry at once);
+        then linear growth capped at the max."""
+        if self._failure_count <= 1:
+            return 0.0
+        return min(_RETRY_BACKOFF_BASE_SECS * (self._failure_count - 1), _RETRY_BACKOFF_MAX_SECS)
+
+    def _terminate_proc(self) -> None:
+        """Terminate + clear the current walletd handle (SIGTERM, then SIGKILL).
+
+        Used before a relaunch so a previous attempt that spawned but never
+        became ready is not orphaned by dropping the only reference to it.
+        """
+        proc = self._proc
+        self._proc = None
+        if proc is None:
+            return
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.terminate()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=_TERM_GRACE_SECS)
+        if proc.poll() is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
 
     def start(self) -> tuple[str, str]:
         """Init (if needed), spawn walletd, wait for ready, return (url, token).
