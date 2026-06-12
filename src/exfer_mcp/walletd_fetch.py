@@ -34,15 +34,24 @@ from .config import ConfigError
 WALLETD_REPO = "exfer-stack/exfer-walletd"
 
 # Pinned known-good walletd release. Override with ``EXFER_WALLETD_VERSION`` (it
-# must also appear in _PINNED_SHA256). v1.14.0 is the first release carrying both
+# must also appear in _PINNED_SHA256). v1.15.0 adds --expect-genesis (binds the
+# walletd signature domain to an operator-named genesis, issue #32 — required for
+# signing on devnet/testnet chains); v1.14.0 was the first release carrying both
 # SHA256SUMS and the RPCs this MCP needs (EXFER-QUOTE, HTLC indexer delegation).
-DEFAULT_WALLETD_VERSION = "v1.14.0"
+DEFAULT_WALLETD_VERSION = "v1.15.0"
 
 # Independently computed + cross-checked against the release SHA256SUMS, then
 # frozen here so the running code never trusts a co-located, mutable checksum.
 # To support a new walletd build: download its 5 assets, sha256 them, add a
 # version entry, and cut a new exfer-mcp release.
 _PINNED_SHA256: dict[str, dict[str, str]] = {
+    "v1.15.0": {
+        "exfer-walletd-linux-x86_64": "9386b6bedb4884dfe279a2d99200ed0bc2fcccbef972cc1c104f52849c42418e",
+        "exfer-walletd-linux-arm64": "b2b0318df3b7a9201666dd9bcb937a4d0ca32a11b5dec7cfb336b9f870ea7a1d",
+        "exfer-walletd-macos-x86_64": "9a0d09b68357ad3d46a3709a128bf9eaab448e3efe4daac6584f2b2659534b36",
+        "exfer-walletd-macos-arm64": "efcfc91c5dd4fec26a682a5cdc903054ddfd4bc6465418c8ae093681ebdc8cab",
+        "exfer-walletd-windows-x86_64.exe": "cbf322b30ef11ce1e56514adc3bbb9fb3e96b9503581e3da05ca8c963e5b004f",
+    },
     "v1.14.0": {
         "exfer-walletd-linux-x86_64": "6e049ddd8c13b7a3a36de25bd77af43f38cf126c9fc28503f95e8cad2bf16837",
         "exfer-walletd-linux-arm64": "619a7c04d3b67508e9bc357fa9336dadb2640008dd5e0244b27cb301105b834b",

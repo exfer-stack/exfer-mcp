@@ -12,6 +12,7 @@ Two layers:
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import socket
 import subprocess
@@ -147,6 +148,18 @@ def _managed_cfg(tmp_path: Path, port: int = 7448) -> ManagedConfig:
         bind_host="127.0.0.1",
         bind_port=port,
     )
+
+
+def test_build_argv_forwards_expect_genesis(tmp_path: Path) -> None:
+    cfg = dataclasses.replace(_managed_cfg(tmp_path), expect_genesis="ab" * 32)
+    argv = WalletdSupervisor(cfg)._build_argv("127.0.0.1:7448")
+    i = argv.index("--expect-genesis")
+    assert argv[i + 1] == "ab" * 32
+
+
+def test_build_argv_omits_expect_genesis_by_default(tmp_path: Path) -> None:
+    argv = WalletdSupervisor(_managed_cfg(tmp_path))._build_argv("127.0.0.1:7448")
+    assert "--expect-genesis" not in argv
 
 
 def test_stop_is_safe_with_no_process(tmp_path: Path) -> None:

@@ -119,6 +119,10 @@ class ManagedConfig:
     datadir: Path
     bind_host: str
     bind_port: int
+    # Optional genesis id (64 hex chars) the spawned walletd must verify the
+    # node reports before binding its signature domain to it (walletd
+    # --expect-genesis, upstream issue #32). Unset → canonical mainnet domain.
+    expect_genesis: str | None = None
 
     @classmethod
     def from_env(cls) -> ManagedConfig:
@@ -166,6 +170,11 @@ class ManagedConfig:
         bind = os.environ.get("EXFER_WALLETD_BIND") or DEFAULT_BIND
         host, port = _parse_bind(bind)
 
+        # Forwarded to walletd as --expect-genesis (needs walletd >= v1.15.0).
+        # Set this when the node is a devnet/testnet so settlement signing
+        # binds to that chain's domain instead of the canonical one.
+        expect_genesis = os.environ.get("WALLETD_EXPECT_GENESIS") or None
+
         return cls(
             binary=binary,
             keystore_passphrase=passphrase,
@@ -174,6 +183,7 @@ class ManagedConfig:
             datadir=datadir,
             bind_host=host,
             bind_port=port,
+            expect_genesis=expect_genesis,
         )
 
 

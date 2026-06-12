@@ -613,6 +613,10 @@ class WalletdSupervisor:
         ]
         if cfg.indexer_rpc:
             argv += ["--indexer-rpc", cfg.indexer_rpc]
+        if cfg.expect_genesis:
+            # walletd >= v1.15.0: verify the node-reported genesis and bind the
+            # signature domain to it (issue #32) — required for devnet/testnet.
+            argv += ["--expect-genesis", cfg.expect_genesis]
         return argv
 
     def _child_env(self) -> dict[str, str]:
