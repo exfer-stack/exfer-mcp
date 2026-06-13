@@ -29,7 +29,12 @@ from exfer_mcp.walletd_supervisor import (
     find_free_loopback_port,
 )
 
-WALLETD_BIN = Path("/home/rufus/crypto-due-dil/exfer-walletd/target/release/exfer-walletd")
+WALLETD_BIN = Path(
+    os.environ.get(
+        "EXFER_WALLETD_BIN",
+        str(Path(__file__).resolve().parents[2] / "exfer-walletd/target/release/exfer-walletd"),
+    )
+)
 DEFAULT_NODE = "http://64.176.231.198:9334,http://89.127.232.155:9334"
 
 
