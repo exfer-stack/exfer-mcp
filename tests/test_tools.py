@@ -59,9 +59,11 @@ def test_tool_count() -> None:
     # find_settlements_by_quote_id) brought it to 24; then the two washable
     # "trust score" reputation tools (get_attestation_edges,
     # detect_in_chain_swaps) were removed as misleading — leaving raw
-    # get_address_history only — bringing it to 22.
+    # get_address_history only — bringing it to 22. With the update-check
+    # meta tool that is 23; the self-funding earn trio (earn + earn_status +
+    # earn_stop) brings it to 26.
     # Every tool must have a handler.
-    assert len(TOOLS) == 23
+    assert len(TOOLS) == 26
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 

@@ -20,6 +20,14 @@ from .address import (
     get_block_height,
     list_addresses,
 )
+from .earn import (
+    EARN_STATUS_TOOL,
+    EARN_STOP_TOOL,
+    EARN_TOOL,
+    earn,
+    earn_status,
+    earn_stop,
+)
 from .honor import (
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
     GET_OUTPUT_DATUM_TOOL,
@@ -110,6 +118,10 @@ TOOLS: list[mcp_types.Tool] = [
     # honor read-back (EXFER-QUOTE settlement verify / reverse-lookup)
     GET_OUTPUT_DATUM_TOOL,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
+    # self-funding: mine EXFER for your own address with spare CPU
+    EARN_TOOL,
+    EARN_STATUS_TOOL,
+    EARN_STOP_TOOL,
     # meta: update check (no wallet access)
     CHECK_UPDATE_TOOL,
 ]
@@ -137,10 +149,20 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_ADDRESS_HISTORY_TOOL.name: get_address_history,
     GET_OUTPUT_DATUM_TOOL.name: get_output_datum,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL.name: find_settlements_by_quote_id,
+    EARN_TOOL.name: earn,
+    EARN_STATUS_TOOL.name: earn_status,
+    EARN_STOP_TOOL.name: earn_stop,
     CHECK_UPDATE_TOOL.name: check_update,
 }
 
 # Tools that need NO walletd (pure / meta) — the server dispatches these without
 # the managed-walletd readiness gate, so e.g. an update check works even when
 # walletd is down.
-NO_WALLETD_TOOLS: frozenset[str] = frozenset({CHECK_UPDATE_TOOL.name})
+NO_WALLETD_TOOLS: frozenset[str] = frozenset(
+    {
+        CHECK_UPDATE_TOOL.name,
+        EARN_TOOL.name,
+        EARN_STATUS_TOOL.name,
+        EARN_STOP_TOOL.name,
+    }
+)
