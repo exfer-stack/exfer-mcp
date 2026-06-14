@@ -39,11 +39,28 @@ DEFAULT_POOL = os.environ.get("EXFER_MINE_POOL", "ssl://ninjaraider.com:44913")
 
 
 def _resolve_miner_bin(explicit: str | None) -> str | None:
-    """Find the exfer-agent-miner binary: explicit arg, env, then PATH."""
+    """Find an already-present exfer-agent-miner: explicit arg, env, then PATH."""
     candidate = explicit or os.environ.get("EXFER_AGENT_MINER_BIN")
     if candidate and os.path.exists(candidate) and os.access(candidate, os.X_OK):
         return candidate
     return shutil.which("exfer-agent-miner")
+
+
+def _miner_bin_or_fetch(explicit: str | None) -> tuple[str | None, str | None]:
+    """Resolve the miner, auto-fetching a verified prebuilt for zero setup.
+
+    Returns ``(path, None)`` on success or ``(None, error)`` so the caller can
+    degrade gracefully instead of crashing the MCP.
+    """
+    found = _resolve_miner_bin(explicit)
+    if found:
+        return found, None
+    try:
+        from ..miner_fetch import ensure_miner_binary
+
+        return str(ensure_miner_binary()), None
+    except Exception as exc:  # MinerFetchError or import/runtime issue
+        return None, str(exc)
 
 
 class _Miner:
@@ -66,17 +83,11 @@ class _Miner:
         return self.proc is not None and self.proc.returncode is None
 
     async def start(self, bin_path: str, address: str, pool: str, threads: int, gpu: str) -> None:
-        argv = [
-            bin_path,
-            "--pool",
-            pool,
-            "--address",
-            address,
-            "--threads",
-            str(threads),
-            "--stats-secs",
-            "5",
-        ]
+        argv = [bin_path, "--pool", pool, "--address", address, "--stats-secs", "5"]
+        # threads == 0 means "auto": omit the flag so the miner picks cores-1.
+        # Passing an explicit 0 tells the miner to use no CPU threads.
+        if threads > 0:
+            argv += ["--threads", str(threads)]
         if gpu:
             argv += ["--gpu", gpu]
         self.proc = await asyncio.create_subprocess_exec(
@@ -229,15 +240,9 @@ async def earn(
     del client, config  # mining is independent of walletd
     if _MINER.running():
         return [json_text({"status": "already_running", **_MINER.snapshot()})]
-    bin_path = _resolve_miner_bin(arguments.get("miner_bin"))
+    bin_path, err = _miner_bin_or_fetch(arguments.get("miner_bin"))
     if bin_path is None:
-        return [
-            text(
-                "exfer-agent-miner not found. Build it (cargo build --release -p "
-                "exfer-agent-miner) and set EXFER_AGENT_MINER_BIN to the binary, "
-                "or put it on PATH."
-            )
-        ]
+        return [text(f"could not obtain exfer-agent-miner: {err}")]
     address = arguments["address"]
     pool = arguments.get("pool") or DEFAULT_POOL
     threads = int(arguments.get("threads", 0))
@@ -254,9 +259,9 @@ async def earn_probe(
     config: Config,
 ) -> list[mcp_types.TextContent]:
     del client, config
-    bin_path = _resolve_miner_bin(arguments.get("miner_bin"))
+    bin_path, err = _miner_bin_or_fetch(arguments.get("miner_bin"))
     if bin_path is None:
-        return [text("exfer-agent-miner not found; set EXFER_AGENT_MINER_BIN or put it on PATH.")]
+        return [text(f"could not obtain exfer-agent-miner: {err}")]
     address = arguments["address"]
     pools = arguments.get("pools") or [DEFAULT_POOL]
     gpu = str(arguments.get("gpu", ""))

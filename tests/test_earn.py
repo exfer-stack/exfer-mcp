@@ -39,10 +39,12 @@ def test_earn_stop_when_idle() -> None:
 
 
 def test_earn_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Force the resolver to find nothing: no env, nothing on PATH.
+    # Nothing on PATH/env, and an UNPINNED miner version so the auto-fetch fails
+    # immediately (no network): earn must degrade to a helpful message, not crash.
     monkeypatch.delenv("EXFER_AGENT_MINER_BIN", raising=False)
+    monkeypatch.setenv("EXFER_AGENT_MINER_VERSION", "v0.0.0-unpinned")
     monkeypatch.setattr("shutil.which", lambda _name: None)
     out = asyncio.run(
         earn(None, {"address": "a" * 64, "miner_bin": "/nonexistent/exfer-agent-miner"}, None)  # type: ignore[arg-type]
     )
-    assert "not found" in out[0].text.lower()
+    assert "could not obtain" in out[0].text.lower()
