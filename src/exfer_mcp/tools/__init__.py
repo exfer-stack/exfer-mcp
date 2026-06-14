@@ -21,10 +21,12 @@ from .address import (
     list_addresses,
 )
 from .earn import (
+    EARN_PROBE_TOOL,
     EARN_STATUS_TOOL,
     EARN_STOP_TOOL,
     EARN_TOOL,
     earn,
+    earn_probe,
     earn_status,
     earn_stop,
 )
@@ -118,7 +120,8 @@ TOOLS: list[mcp_types.Tool] = [
     # honor read-back (EXFER-QUOTE settlement verify / reverse-lookup)
     GET_OUTPUT_DATUM_TOOL,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL,
-    # self-funding: mine EXFER for your own address with spare CPU
+    # self-funding: mine EXFER for your own address with spare CPU/GPU
+    EARN_PROBE_TOOL,
     EARN_TOOL,
     EARN_STATUS_TOOL,
     EARN_STOP_TOOL,
@@ -150,6 +153,7 @@ HANDLERS: dict[str, ToolHandler] = {
     GET_OUTPUT_DATUM_TOOL.name: get_output_datum,
     FIND_SETTLEMENTS_BY_QUOTE_ID_TOOL.name: find_settlements_by_quote_id,
     EARN_TOOL.name: earn,
+    EARN_PROBE_TOOL.name: earn_probe,
     EARN_STATUS_TOOL.name: earn_status,
     EARN_STOP_TOOL.name: earn_stop,
     CHECK_UPDATE_TOOL.name: check_update,
@@ -162,6 +166,7 @@ NO_WALLETD_TOOLS: frozenset[str] = frozenset(
     {
         CHECK_UPDATE_TOOL.name,
         EARN_TOOL.name,
+        EARN_PROBE_TOOL.name,
         EARN_STATUS_TOOL.name,
         EARN_STOP_TOOL.name,
     }

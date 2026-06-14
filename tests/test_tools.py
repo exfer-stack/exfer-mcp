@@ -63,7 +63,7 @@ def test_tool_count() -> None:
     # meta tool that is 23; the self-funding earn trio (earn + earn_status +
     # earn_stop) brings it to 26.
     # Every tool must have a handler.
-    assert len(TOOLS) == 26
+    assert len(TOOLS) == 27
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 

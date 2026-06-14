@@ -14,7 +14,7 @@ import pytest
 from exfer_mcp.tools import HANDLERS, NO_WALLETD_TOOLS, TOOLS
 from exfer_mcp.tools.earn import earn, earn_status, earn_stop
 
-_NAMES = ("exfer_earn", "exfer_earn_status", "exfer_earn_stop")
+_NAMES = ("exfer_earn", "exfer_earn_probe", "exfer_earn_status", "exfer_earn_stop")
 
 
 def test_earn_tools_registered() -> None:
@@ -22,7 +22,7 @@ def test_earn_tools_registered() -> None:
     for name in _NAMES:
         assert name in listed, f"{name} missing from TOOLS"
         assert name in HANDLERS, f"{name} missing from HANDLERS"
-        # Mining is independent of walletd, so all three skip the readiness gate.
+        # Mining is independent of walletd, so they all skip the readiness gate.
         assert name in NO_WALLETD_TOOLS, f"{name} should be a no-walletd tool"
 
 

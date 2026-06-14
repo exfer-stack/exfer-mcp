@@ -32,9 +32,10 @@ from exfer import AsyncClient
 from ..config import Config
 from ._common import json_text, text
 
-# A public, CPU-friendly EXFER stratum pool. Override with EXFER_MINE_POOL or the
-# `pool` argument.
-DEFAULT_POOL = os.environ.get("EXFER_MINE_POOL", "ssl://exfer.luckypool.io:3336")
+# A public EXFER stratum pool verified to accept this miner's shares. Override
+# with EXFER_MINE_POOL or the `pool` argument; use exfer_earn_probe to check
+# whether any given pool actually accepts shares before committing.
+DEFAULT_POOL = os.environ.get("EXFER_MINE_POOL", "ssl://ninjaraider.com:44913")
 
 
 def _resolve_miner_bin(explicit: str | None) -> str | None:
@@ -64,7 +65,7 @@ class _Miner:
     def running(self) -> bool:
         return self.proc is not None and self.proc.returncode is None
 
-    async def start(self, bin_path: str, address: str, pool: str, threads: int) -> None:
+    async def start(self, bin_path: str, address: str, pool: str, threads: int, gpu: str) -> None:
         argv = [
             bin_path,
             "--pool",
@@ -76,6 +77,8 @@ class _Miner:
             "--stats-secs",
             "5",
         ]
+        if gpu:
+            argv += ["--gpu", gpu]
         self.proc = await asyncio.create_subprocess_exec(
             *argv,
             stdout=asyncio.subprocess.PIPE,
@@ -154,13 +157,48 @@ EARN_TOOL = mcp_types.Tool(
             },
             "threads": {
                 "type": "integer",
-                "description": "CPU threads (0 = auto = cores - 1).",
+                "description": "CPU threads (0 = auto = cores - 1, or 0 when gpu is set).",
                 "minimum": 0,
+            },
+            "gpu": {
+                "type": "string",
+                "description": "NVIDIA GPU indices to mine on, e.g. '0' or '0,1'. Needs a CUDA-enabled miner build.",
             },
             "miner_bin": {
                 "type": "string",
                 "description": "Path to exfer-agent-miner. Default: $EXFER_AGENT_MINER_BIN or PATH.",
             },
+        },
+        "required": ["address"],
+        "additionalProperties": False,
+    },
+)
+
+EARN_PROBE_TOOL = mcp_types.Tool(
+    name="exfer_earn_probe",
+    description=(
+        "Test whether one or more pools actually accept YOUR shares before you "
+        "commit to mining there — pools vary in protocol and some silently reject. "
+        "Returns a JSON verdict per pool (reachable / authorized / share_accepted / "
+        "hashrate) and a `recommended` pool (the accepting one with the best "
+        "hashrate). Use this to choose a pool, then call exfer_earn with it."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "string",
+                "description": "Your payout address (64 lowercase hex).",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "pools": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": f"Pool URLs to probe. Default: [{DEFAULT_POOL}].",
+            },
+            "gpu": {"type": "string", "description": "GPU indices, e.g. '0'. Speeds up probing."},
+            "probe_secs": {"type": "integer", "description": "Per-pool timeout seconds (default 35).", "minimum": 5},
+            "miner_bin": {"type": "string", "description": "Path to exfer-agent-miner."},
         },
         "required": ["address"],
         "additionalProperties": False,
@@ -203,8 +241,52 @@ async def earn(
     address = arguments["address"]
     pool = arguments.get("pool") or DEFAULT_POOL
     threads = int(arguments.get("threads", 0))
-    await _MINER.start(bin_path, address, pool, threads)
-    return [json_text({"status": "started", "address": address, "pool": pool, "threads": threads})]
+    gpu = str(arguments.get("gpu", ""))
+    await _MINER.start(bin_path, address, pool, threads, gpu)
+    return [
+        json_text({"status": "started", "address": address, "pool": pool, "threads": threads, "gpu": gpu or None})
+    ]
+
+
+async def earn_probe(
+    client: AsyncClient,
+    arguments: dict[str, Any],
+    config: Config,
+) -> list[mcp_types.TextContent]:
+    del client, config
+    bin_path = _resolve_miner_bin(arguments.get("miner_bin"))
+    if bin_path is None:
+        return [text("exfer-agent-miner not found; set EXFER_AGENT_MINER_BIN or put it on PATH.")]
+    address = arguments["address"]
+    pools = arguments.get("pools") or [DEFAULT_POOL]
+    gpu = str(arguments.get("gpu", ""))
+    secs = int(arguments.get("probe_secs", 35))
+    verdicts: list[dict[str, Any]] = []
+    for pool in pools:
+        argv = [bin_path, "--probe", "--pool", pool, "--address", address, "--probe-secs", str(secs)]
+        if gpu:
+            argv += ["--gpu", gpu]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=secs + 20)
+        except (TimeoutError, asyncio.TimeoutError):
+            verdicts.append({"pool": pool, "share_accepted": False, "detail": "probe timed out"})
+            continue
+        verdict: dict[str, Any] = {"pool": pool, "share_accepted": False, "detail": "no verdict"}
+        for line in reversed(out.decode("utf-8", "replace").splitlines()):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    verdict = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        verdicts.append(verdict)
+    verdicts.sort(key=lambda v: (not v.get("share_accepted"), -float(v.get("hashrate") or 0)))
+    recommended = next((v["pool"] for v in verdicts if v.get("share_accepted")), None)
+    return [json_text({"probed": verdicts, "recommended": recommended})]
 
 
 async def earn_status(
