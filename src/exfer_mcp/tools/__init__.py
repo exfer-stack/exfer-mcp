@@ -70,6 +70,24 @@ from .signing import (
     sign_message,
     verify_message,
 )
+from .swap import (
+    BSC_GET_ADDRESS_TOOL,
+    BSC_GET_BALANCE_TOOL,
+    SWAP_EXECUTE_TOOL,
+    SWAP_GET_QUOTE_TOOL,
+    SWAP_LIST_TOOL,
+    SWAP_POOL_INFO_TOOL,
+    SWAP_REFUND_TOOL,
+    SWAP_STATUS_TOOL,
+    bsc_get_address,
+    bsc_get_balance,
+    swap_execute,
+    swap_get_quote,
+    swap_list,
+    swap_pool_info,
+    swap_refund,
+    swap_status,
+)
 from .transfer import (
     SIMULATE_TRANSFER_TOOL,
     TRANSFER_TOOL,
@@ -125,6 +143,15 @@ TOOLS: list[mcp_types.Tool] = [
     EARN_TOOL,
     EARN_STATUS_TOOL,
     EARN_STOP_TOOL,
+    # on-ramp: cross-chain swap USDT/BNB -> EXFER (read tools first)
+    BSC_GET_ADDRESS_TOOL,
+    BSC_GET_BALANCE_TOOL,
+    SWAP_POOL_INFO_TOOL,
+    SWAP_GET_QUOTE_TOOL,
+    SWAP_STATUS_TOOL,
+    SWAP_LIST_TOOL,
+    SWAP_EXECUTE_TOOL,
+    SWAP_REFUND_TOOL,
     # meta: update check (no wallet access)
     CHECK_UPDATE_TOOL,
 ]
@@ -156,6 +183,14 @@ HANDLERS: dict[str, ToolHandler] = {
     EARN_PROBE_TOOL.name: earn_probe,
     EARN_STATUS_TOOL.name: earn_status,
     EARN_STOP_TOOL.name: earn_stop,
+    BSC_GET_ADDRESS_TOOL.name: bsc_get_address,
+    BSC_GET_BALANCE_TOOL.name: bsc_get_balance,
+    SWAP_POOL_INFO_TOOL.name: swap_pool_info,
+    SWAP_GET_QUOTE_TOOL.name: swap_get_quote,
+    SWAP_STATUS_TOOL.name: swap_status,
+    SWAP_LIST_TOOL.name: swap_list,
+    SWAP_EXECUTE_TOOL.name: swap_execute,
+    SWAP_REFUND_TOOL.name: swap_refund,
     CHECK_UPDATE_TOOL.name: check_update,
 }
 

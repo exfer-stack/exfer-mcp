@@ -61,7 +61,10 @@ LIST_ADDRESSES_TOOL = mcp_types.Tool(
     description=(
         "List every address this walletd holds a key for, sorted ascending. "
         "Returns a JSON array of records, each {address, index, and one of "
-        "label/imported}. Read-only."
+        "label/imported}. There is no distinguished 'default' address — any of "
+        "them can receive funds; to receive into one, pick any (e.g. the first, "
+        "or one with a meaningful `label`), or call exfer_generate_address for a "
+        "fresh one. Read-only."
     ),
     inputSchema={
         "type": "object",

@@ -61,9 +61,12 @@ def test_tool_count() -> None:
     # detect_in_chain_swaps) were removed as misleading — leaving raw
     # get_address_history only — bringing it to 22. With the update-check
     # meta tool that is 23; the self-funding earn trio (earn + earn_status +
-    # earn_stop) brings it to 26.
+    # earn_stop) brings it to 26 (earn_probe made it 27). The cross-chain
+    # on-ramp set (bsc_get_address + swap_pool_info + swap_get_quote +
+    # swap_status + swap_list + swap_execute + swap_refund) brought it to 34;
+    # adding bsc_get_balance (read BNB balance to confirm deposits) makes 35.
     # Every tool must have a handler.
-    assert len(TOOLS) == 27
+    assert len(TOOLS) == 35
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 
@@ -380,7 +383,7 @@ async def test_wait_for_tx_timeout_renders_friendly_text(
 # ---------------------------------------------------------------------------
 
 
-async def test_payment_uri_encode_returns_bare_string(
+async def test_payment_uri_encode_returns_json(
     client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
 ) -> None:
     expected = f"exfer:{ADDR}?amount=100000000&memo=invoice%2099"
@@ -390,7 +393,9 @@ async def test_payment_uri_encode_returns_bare_string(
         {"address": ADDR, "amount": 100_000_000, "memo": "invoice 99"},
         config,
     )
-    assert out[0].text == expected
+    # Wrapped as JSON {"uri": ...} for output-shape consistency with decode.
+    parsed = json.loads(out[0].text)
+    assert parsed["uri"] == expected
 
 
 async def test_payment_uri_decode_returns_json(
@@ -550,3 +555,96 @@ async def test_find_settlements_by_quote_id_empty(
     )
     parsed = json.loads(out[0].text)
     assert parsed == {"settlements": []}
+
+
+# ---------------------------------------------------------------------------
+# Cross-chain swap (on-ramp)
+# ---------------------------------------------------------------------------
+
+
+def _swap_record() -> dict[str, object]:
+    return {
+        "swap_id": "swap-abc123",
+        "direction": "bnb_to_exfer",
+        "status": "quoted",
+        "amount_in": "0.05",
+        "amount_out": "123.4",
+        "expires_at": 1_700_000_300,
+    }
+
+
+async def test_bsc_get_address(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"address": "0xAbc123", "created": True})
+    )
+    out = await HANDLERS["exfer_bsc_get_address"](client, {}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed == {"address": "0xAbc123", "created": True}
+    assert json.loads(route.calls.last.request.content)["method"] == "bsc_get_address"
+
+
+async def test_bsc_get_balance(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"bnb_wei": "3505386683362864", "gas_reserve_wei": "200000000000000"})
+    )
+    out = await HANDLERS["exfer_bsc_get_balance"](client, {}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed["bnb_wei"] == "3505386683362864"
+    assert parsed["gas_reserve_wei"] == "200000000000000"
+    assert json.loads(route.calls.last.request.content)["method"] == "bsc_get_balances"
+
+
+async def test_swap_get_quote_sends_params(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_swap_record()))
+    out = await HANDLERS["exfer_swap_get_quote"](
+        client,
+        {"direction": "bnb_to_exfer", "amount_in": "0.05", "from": ADDR},
+        config,
+    )
+    parsed = json.loads(out[0].text)
+    assert parsed["swap_id"] == "swap-abc123"
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "swap_get_quote"
+    assert body["params"] == {"direction": "bnb_to_exfer", "amount_in": "0.05", "from": ADDR}
+
+
+async def test_swap_execute_sends_swap_id(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_swap_record()))
+    out = await HANDLERS["exfer_swap_execute"](client, {"swap_id": "swap-abc123"}, config)
+    assert json.loads(out[0].text)["swap_id"] == "swap-abc123"
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "swap_execute"
+    assert body["params"] == {"swap_id": "swap-abc123"}
+
+
+async def test_swap_execute_refused_under_caps_renders_error(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    # walletd fails closed on exfer_to_bnb while spend caps are active; the
+    # error must reach the agent as readable text, not a crash.
+    mock_walletd.post("/").mock(
+        return_value=rpc_err(-32602, "exfer_to_bnb swaps are refused while spend caps are set")
+    )
+    out = await HANDLERS["exfer_swap_get_quote"](
+        client,
+        {"direction": "exfer_to_bnb", "amount_in": "10", "from": ADDR},
+        config,
+    )
+    assert "refused" in out[0].text.lower()
+
+
+async def test_swap_list(
+    client: AsyncClient, mock_walletd: respx.MockRouter, config: Config
+) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok([_swap_record()]))
+    out = await HANDLERS["exfer_swap_list"](client, {}, config)
+    parsed = json.loads(out[0].text)
+    assert parsed[0]["swap_id"] == "swap-abc123"

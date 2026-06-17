@@ -101,12 +101,14 @@ Set `WALLETD_URL` + `WALLETD_AUTH_TOKEN` (and `WALLETD_FINGERPRINT` for `https:/
 | `EXFER_WALLETD_VERSION` | managed (optional) | pinned | walletd release to auto-download |
 | `WALLETD_DATADIR` | managed (optional) | `~/.exfer-walletd-mcp` | keystore + tokens; **give each concurrent session its own** |
 | `EXFER_NODE_RPC` / `EXFER_INDEXER_RPC` | managed (optional) | public mainnet | upstream node(s) / indexer (`""` indexer = disable) |
+| `EXFER_ENABLE_SWAP` | managed (optional) | off | `1` turns on the cross-chain on-ramp (`swap_*` / `bsc_*` tools) using the community pool default. Off by default — swap moves real cross-chain funds |
+| `EXFER_SWAP_POOL` / `EXFER_SWAP_POOL_CA` | managed (optional) | community pool | point the swap at your own pool URL + its CA (PEM). Overrides the default; a custom pool never uses the bundled CA |
 | `WALLETD_URL` + `WALLETD_AUTH_TOKEN` | external (required) | — | walletd URL + bearer token |
 | `WALLETD_FINGERPRINT` | external (optional) | — | `sha256:<hex>` for self-signed TLS |
 
 > Running **multiple** agent sessions at once? Managed mode is one wallet per datadir — give each session a distinct `WALLETD_DATADIR`, or run one shared walletd and connect every session in external mode.
 
-## What you get (27 tools)
+## What you get (35 tools)
 
 - **Wallet & chain:** `generate_address`, `list_addresses`, `get_balance`, `get_block_height`
 - **Payments:** `simulate_transfer` (dry-run fee), `transfer`, `wait_for_tx`, `wait_for_payment` (push, no polling), `payment_uri_encode`/`_decode`
@@ -114,6 +116,7 @@ Set `WALLETD_URL` + `WALLETD_AUTH_TOKEN` (and `WALLETD_FINGERPRINT` for `https:/
 - **Conditional payment:** `htlc_lock`/`_claim`/`_reclaim`/`_status`/`_list` (atomic, hash-time-locked settlement)
 - **History:** `get_address_history` (indexer-backed raw activity)
 - **Self-funding (earn):** `earn`, `earn_probe`, `earn_status`, `earn_stop` — mine EXFER to your own address with spare CPU/GPU. EXFER is mineable, so an agent can acquire its own starting capital from compute alone (no human, bank, KYC, or pre-funded account). Zero-setup: the prebuilt CPU miner is auto-downloaded and digest-verified on first use (GPU is opt-in via a self-built `--features cuda` binary at `EXFER_AGENT_MINER_BIN`). `earn_probe` tests whether a pool actually accepts your shares and recommends one, so you don't mine blind.
+- **On-ramp (cross-chain swap, opt-in):** `bsc_get_address`, `bsc_get_balance`, `swap_pool_info`, `swap_get_quote`, `swap_execute`, `swap_status`, `swap_list`, `swap_refund` — fund the wallet's BSC address with USDT/BNB and atomically swap into EXFER (and back), so an agent can on-ramp without a human acquiring EXFER for it. **Off unless `EXFER_ENABLE_SWAP=1`** (it moves real cross-chain funds); see the env reference.
 - **Meta:** `check_update` (is a newer exfer-mcp on PyPI? read-only, no wallet access)
 
 The intended spend flow is **simulate → confirm with the user → transfer → wait** — the agent always knows the fee before committing, and the human decides. Note CPU mining at mainnet difficulty is largely symbolic; real earnings want a GPU or a low-difficulty network.

@@ -15,6 +15,8 @@ from exfer_mcp.config import (
     DEFAULT_BIND,
     DEFAULT_INDEXER_RPC,
     DEFAULT_NODE_RPC,
+    DEFAULT_SWAP_POOL_CA,
+    DEFAULT_SWAP_POOL_URL,
     Config,
     ConfigError,
     ManagedConfig,
@@ -37,6 +39,9 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "EXFER_WALLETD_BIND",
         "EXFER_MCP_DEFAULT_FEE_RATE",
         "EXFER_MCP_HTTPX_TIMEOUT",
+        "EXFER_ENABLE_SWAP",
+        "EXFER_SWAP_POOL",
+        "EXFER_SWAP_POOL_CA",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -105,6 +110,57 @@ def test_managed_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     assert f"{cfg.bind_host}:{cfg.bind_port}" == DEFAULT_BIND
     assert cfg.datadir == Path.home() / ".exfer-walletd-mcp"
     assert cfg.keystore_passphrase == "pw"
+    # Swap is opt-in: off unless EXFER_ENABLE_SWAP / EXFER_SWAP_POOL.
+    assert cfg.swap_pool_url is None
+    assert cfg.swap_pool_ca is None
+
+
+def test_managed_swap_enabled_uses_default_pool(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _bin(monkeypatch, tmp_path)
+    monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
+    monkeypatch.setenv("EXFER_ENABLE_SWAP", "1")
+    cfg = ManagedConfig.from_env()
+    assert cfg.swap_pool_url == DEFAULT_SWAP_POOL_URL
+    assert cfg.swap_pool_ca == DEFAULT_SWAP_POOL_CA
+
+
+def test_managed_swap_enable_flag_falsey_stays_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _bin(monkeypatch, tmp_path)
+    monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
+    monkeypatch.setenv("EXFER_ENABLE_SWAP", "0")
+    cfg = ManagedConfig.from_env()
+    assert cfg.swap_pool_url is None
+
+
+def test_managed_swap_custom_pool_overrides_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _bin(monkeypatch, tmp_path)
+    monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
+    monkeypatch.setenv("EXFER_SWAP_POOL", "https://pool.example:9000")
+    monkeypatch.setenv(
+        "EXFER_SWAP_POOL_CA", "-----BEGIN CERTIFICATE-----\nXX\n-----END CERTIFICATE-----"
+    )
+    cfg = ManagedConfig.from_env()
+    assert cfg.swap_pool_url == "https://pool.example:9000"
+    assert cfg.swap_pool_ca is not None and "XX" in cfg.swap_pool_ca
+    # A custom pool must NOT inherit the bundled community CA.
+    assert cfg.swap_pool_ca != DEFAULT_SWAP_POOL_CA
+
+
+def test_managed_swap_custom_pool_without_ca(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _bin(monkeypatch, tmp_path)
+    monkeypatch.setenv("WALLETD_KEYSTORE_PASSPHRASE", "pw")
+    monkeypatch.setenv("EXFER_SWAP_POOL", "https://pool.example:9000")
+    cfg = ManagedConfig.from_env()
+    assert cfg.swap_pool_url == "https://pool.example:9000"
+    assert cfg.swap_pool_ca is None
 
 
 def test_managed_requires_passphrase(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

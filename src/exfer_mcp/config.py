@@ -58,6 +58,26 @@ DEFAULT_BIND = "127.0.0.1:7448"
 DEFAULT_WALLETD_BIN = "exfer-walletd"
 DEFAULT_DATADIR_NAME = ".exfer-walletd-mcp"
 
+# Cross-chain swap (EXFER <-> USDT/BNB on BSC) ships OFF and is opt-in: it moves
+# real cross-chain value, so we don't wire it silently. Enable with
+# EXFER_ENABLE_SWAP=1 to use the community pool below (the SAME pool + pinned
+# self-signed CA the mobile/desktop wallets ship with), or point EXFER_SWAP_POOL
+# at your own pool (and EXFER_SWAP_POOL_CA at its cert). Same DNS-fragility caveat
+# as the node endpoints above.
+DEFAULT_SWAP_POOL_URL = "https://64.176.231.198:8080"
+DEFAULT_SWAP_POOL_CA = """-----BEGIN CERTIFICATE-----
+MIIBljCCATugAwIBAgIUTJepaegKfI5VDoZAGcBp0v8YT34wCgYIKoZIzj0EAwIw
+GDEWMBQGA1UEAwwNZXhmZXItc3dhcC1jYTAeFw0yNjA2MDQyMjEzMzdaFw0zNjA2
+MDEyMjEzMzdaMBgxFjAUBgNVBAMMDWV4ZmVyLXN3YXAtY2EwWTATBgcqhkjOPQIB
+BggqhkjOPQMBBwNCAARpZbH/f2lNoDecMdRrJtLP7ROwI2CcH65wkQ9C3s/GKnBP
+2x8m+nq7f5msXbVsUx/SCE79XqKY3GN8bcaLOcl0o2MwYTAdBgNVHQ4EFgQUqLAw
+xVVcFJN2vvY83lUd+fpozBkwHwYDVR0jBBgwFoAUqLAwxVVcFJN2vvY83lUd+fpo
+zBkwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwID
+SQAwRgIhAJWea9ZtxE/nWo7Jn+MVweU0q4chF/TCs3p7KPbujgLgAiEAv2MVABW2
+TiAd+cw7MH3pK+bxkCf4I038dROruAaFLw0=
+-----END CERTIFICATE-----
+"""
+
 
 class ConfigError(RuntimeError):
     """Raised at startup when a required env var is missing or invalid.
@@ -123,6 +143,11 @@ class ManagedConfig:
     # node reports before binding its signature domain to it (walletd
     # --expect-genesis, upstream issue #32). Unset → canonical mainnet domain.
     expect_genesis: str | None = None
+    # Cross-chain swap (opt-in): when set, forwarded to walletd as
+    # --swap-pool / --swap-pool-ca so the swap on-ramp tools work. Unset → swap
+    # stays off (swap_* tools return "swap not configured").
+    swap_pool_url: str | None = None
+    swap_pool_ca: str | None = None
 
     @classmethod
     def from_env(cls) -> ManagedConfig:
@@ -175,6 +200,23 @@ class ManagedConfig:
         # binds to that chain's domain instead of the canonical one.
         expect_genesis = os.environ.get("WALLETD_EXPECT_GENESIS") or None
 
+        # Cross-chain swap is opt-in (it moves real cross-chain funds): enable
+        # with EXFER_ENABLE_SWAP=1 (uses the community pool default), or point
+        # EXFER_SWAP_POOL at your own pool. A custom pool uses its own
+        # EXFER_SWAP_POOL_CA (or system roots if omitted) — never our default CA.
+        swap_pool_override = os.environ.get("EXFER_SWAP_POOL") or None
+        swap_pool_url: str | None
+        swap_pool_ca: str | None
+        if swap_pool_override:
+            swap_pool_url = swap_pool_override
+            swap_pool_ca = os.environ.get("EXFER_SWAP_POOL_CA") or None
+        elif _env_flag("EXFER_ENABLE_SWAP"):
+            swap_pool_url = DEFAULT_SWAP_POOL_URL
+            swap_pool_ca = os.environ.get("EXFER_SWAP_POOL_CA") or DEFAULT_SWAP_POOL_CA
+        else:
+            swap_pool_url = None
+            swap_pool_ca = None
+
         return cls(
             binary=binary,
             keystore_passphrase=passphrase,
@@ -184,7 +226,14 @@ class ManagedConfig:
             bind_host=host,
             bind_port=port,
             expect_genesis=expect_genesis,
+            swap_pool_url=swap_pool_url,
+            swap_pool_ca=swap_pool_ca,
         )
+
+
+def _env_flag(name: str) -> bool:
+    """True when env var ``name`` is set to a truthy token (1/true/yes/on)."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _parse_bind(bind: str) -> tuple[str, int]:

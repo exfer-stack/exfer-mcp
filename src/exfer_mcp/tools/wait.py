@@ -77,15 +77,20 @@ async def wait_for_tx(
 WAIT_FOR_PAYMENT_TOOL = mcp_types.Tool(
     name="exfer_wait_for_payment",
     description=(
-        "Wait for an incoming payment to `address`. Returns the moment a "
-        "new credit of at least `min_amount` is seen in the node's mempool "
-        "(0 confirmations) — sub-second when the node's SSE push is "
-        "connected, so a selling agent can release a good/service instantly. "
-        "On success returns `{received: true, tx_id, amount, confirmations, "
-        "tip_height}`. This is a receipt/liveness signal, NOT settlement "
-        "finality — for final settlement follow up with `exfer_wait_for_tx`. "
-        "A quiet window is not an error: on timeout it returns `{received: "
-        "false, timed_out: true}` and the agent can simply call again."
+        "Wait for an incoming payment to `address`. Detects a new credit of at "
+        "least `min_amount`. Latency depends on how the credit is seen: when the "
+        "node's SSE push is connected it can surface the mempool sighting at 0 "
+        "confirmations (sub-second), but otherwise it returns at the first "
+        "confirmation (`confirmations: 1`) once the crediting block lands. On "
+        "success returns `{received: true, tx_id, amount, confirmations, "
+        "tip_height}` — note `tx_id` may be null when the credit was detected "
+        "via a confirmed-balance delta rather than a specific mempool tx; in "
+        "that case, to get the tx id, read the address (e.g. "
+        "exfer_get_address_history). This is a receipt/liveness signal, NOT "
+        "settlement finality — for final settlement follow up with "
+        "`exfer_wait_for_tx`. A quiet window is not an error: on timeout it "
+        "returns `{received: false, timed_out: true}` and the agent can call "
+        "again."
     ),
     inputSchema={
         "type": "object",

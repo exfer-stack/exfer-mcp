@@ -622,6 +622,13 @@ class WalletdSupervisor:
     def _child_env(self) -> dict[str, str]:
         env = dict(os.environ)
         env["WALLETD_KEYSTORE_PASSPHRASE"] = self._config.keystore_passphrase
+        # Opt-in cross-chain swap on-ramp (EXFER_ENABLE_SWAP / EXFER_SWAP_POOL).
+        # Passed via walletd's documented env vars rather than CLI flags: the env
+        # names are stable, and the CA is PEM content (not a path).
+        if self._config.swap_pool_url:
+            env["WALLETD_SWAP_POOL"] = self._config.swap_pool_url
+            if self._config.swap_pool_ca:
+                env["WALLETD_SWAP_POOL_CA"] = self._config.swap_pool_ca
         return env
 
     def _reap_stale_walletd(self) -> None:

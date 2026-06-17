@@ -13,14 +13,15 @@ import mcp.types as mcp_types
 from exfer import AsyncClient
 
 from ..config import Config
-from ._common import json_text, render_error, text
+from ._common import json_text, render_error
 
 PAYMENT_URI_ENCODE_TOOL = mcp_types.Tool(
     name="exfer_payment_uri_encode",
     description=(
         "Build a BIP21-style `exfer:<address>?amount=...&memo=...` URI. Useful "
         "when the agent needs to share a payment request the counterparty can "
-        "click or hand to their own wallet."
+        'click or hand to their own wallet. Returns JSON `{"uri": "exfer:..."}` '
+        "(the inverse of exfer_payment_uri_decode)."
     ),
     inputSchema={
         "type": "object",
@@ -66,7 +67,9 @@ async def payment_uri_encode(
         uri = await client.payment_uri_encode(**kwargs)
     except Exception as exc:
         return render_error(exc)
-    return [text(uri)]
+    # Return JSON for output-shape consistency with every other tool (and the
+    # decode inverse), instead of a bare string the agent has to special-case.
+    return [json_text({"uri": uri})]
 
 
 PAYMENT_URI_DECODE_TOOL = mcp_types.Tool(

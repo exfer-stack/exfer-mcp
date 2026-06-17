@@ -25,9 +25,12 @@ GET_ADDRESS_HISTORY_TOOL = mcp_types.Tool(
     name="exfer_get_address_history",
     description=(
         "Activity timeline for any address — the inputs and outputs it appears "
-        "in, with counterparties and amounts. Paginated. Raw on-chain history to "
-        "inspect a counterparty before transacting (you interpret it; it is not a "
-        "trust score). Requires an indexer-backed walletd."
+        "in, with counterparties and amounts. Paginated. Each row's `direction` "
+        "is UTXO-chain language relative to this address: `output` = funds "
+        "RECEIVED (a credit to this address), `input` = funds SPENT (a debit). "
+        "Raw on-chain history to inspect a counterparty before transacting (you "
+        "interpret it; it is not a trust score). Requires an indexer-backed "
+        "walletd."
     ),
     inputSchema={
         "type": "object",

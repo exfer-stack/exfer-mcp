@@ -167,6 +167,27 @@ def test_build_argv_omits_expect_genesis_by_default(tmp_path: Path) -> None:
     assert "--expect-genesis" not in argv
 
 
+def test_child_env_forwards_swap_pool(tmp_path: Path) -> None:
+    cfg = dataclasses.replace(
+        _managed_cfg(tmp_path),
+        swap_pool_url="https://pool.example:8080",
+        swap_pool_ca="-----BEGIN CERTIFICATE-----\nXX\n-----END CERTIFICATE-----",
+    )
+    env = WalletdSupervisor(cfg)._child_env()
+    assert env["WALLETD_SWAP_POOL"] == "https://pool.example:8080"
+    assert "XX" in env["WALLETD_SWAP_POOL_CA"]
+
+
+def test_child_env_omits_swap_pool_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("WALLETD_SWAP_POOL", raising=False)
+    monkeypatch.delenv("WALLETD_SWAP_POOL_CA", raising=False)
+    env = WalletdSupervisor(_managed_cfg(tmp_path))._child_env()
+    assert "WALLETD_SWAP_POOL" not in env
+    assert "WALLETD_SWAP_POOL_CA" not in env
+
+
 def test_stop_is_safe_with_no_process(tmp_path: Path) -> None:
     sup = WalletdSupervisor(_managed_cfg(tmp_path))
     # Never started → stop must be a no-op, and idempotent.
