@@ -2,6 +2,8 @@
 
 MCP server for the [Exfer](https://github.com/ahuman-exfer/exfer) blockchain — gives an AI agent (Claude Code, Claude Desktop, Cursor, any MCP host) a typed wallet it can actually use: balances, payments, signed price quotes, and HTLC settlement on mainnet.
 
+**What it's for, proven:** two agents settling a real service on mainnet, end to end — a signed EXFER-QUOTE, an on-chain payment that binds `datum = quote_id`, then atomic delivery the instant the chain proves it to depth. No human in the loop. See [`exfer-honor/examples/mainnet-loop`](https://github.com/exfer-stack/exfer-honor/tree/main/examples/mainnet-loop).
+
 > ⚠️ **The agent can spend this wallet on its own — there is no per-transaction human approval.** Unlike a normal wallet (where you click "confirm" on each send), anything that can reach this MCP server — your agent, or a prompt-injection of it — can move the funds. Keep only a float you're OK losing, and/or set spend caps (`WALLETD_SPEND_CAP_PER_TX`, `WALLETD_SPEND_CAP_PER_PERIOD` + `WALLETD_SPEND_CAP_PERIOD_SECS`, in exfers).
 
 ## Set it up
