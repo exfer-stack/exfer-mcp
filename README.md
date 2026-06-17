@@ -45,6 +45,13 @@ uvx exfer-mcp==0.5.0 --prewarm
 
 (Pin the version — `uvx` otherwise resolves+caches whatever is latest. `pip install exfer-mcp` also works; Python ≥ 3.10, pulls the `exfer` SDK + `mcp` + `psutil`.)
 
+> **Installing a prerelease** (e.g. the cross-chain swap on-ramp shipped first in `0.6.0a1`): pin the exact prerelease **and** pass `--prerelease=allow`, because it depends on a prerelease of the `exfer` SDK that resolvers skip by default. Replace the version in every command above, e.g.:
+> ```bash
+> uvx --prerelease=allow exfer-mcp==0.6.0a1 --prewarm
+> claude mcp add exfer -e WALLETD_KEYSTORE_PASSPHRASE='<passphrase>' -- uvx --prerelease=allow exfer-mcp==0.6.0a1
+> ```
+> Config-file hosts: add `"--prerelease=allow"` as the first entry in `args`. (Stable releases need none of this.)
+
 ## Configure
 
 `exfer-mcp` needs an `exfer-walletd` wallet daemon (it holds the keys and signs/broadcasts). **Setting `WALLETD_URL` is the mode switch:**
