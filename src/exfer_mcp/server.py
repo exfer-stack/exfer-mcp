@@ -13,6 +13,7 @@ session.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -230,10 +231,19 @@ def main() -> None:
     async server loop so the binstub can be invoked directly by the MCP
     host without an event loop already running.
 
-    The only CLI flag is ``--prewarm`` (cache the walletd binary + exit); with no
-    flag we run the MCP server loop over stdio as the host expects.
+    Prewarm (cache the walletd binary + exit) is triggered by the ``--prewarm``
+    flag OR the ``EXFER_MCP_PREWARM`` env var being truthy — the env var is a
+    robust fallback for hosts/shells where a trailing CLI flag isn't forwarded to
+    the tool (and is typo-proof). With neither, we run the MCP server loop over
+    stdio as the host expects.
     """
-    if "--prewarm" in sys.argv[1:]:
+    prewarm_env = os.environ.get("EXFER_MCP_PREWARM", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if "--prewarm" in sys.argv[1:] or prewarm_env:
         _prewarm()
         return
     asyncio.run(_run())

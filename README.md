@@ -54,6 +54,8 @@ uvx exfer-mcp==0.5.0 --prewarm
 > ```
 > Config-file hosts: add `"--prerelease=allow"` as the first entry in `args`. (Stable releases need none of this.)
 
+> If a shell/host doesn't forward the trailing `--prewarm` flag to the tool, set `EXFER_MCP_PREWARM=1` in the environment instead — it triggers the same prewarm-and-exit and is typo-proof.
+
 ## Configure
 
 `exfer-mcp` needs an `exfer-walletd` wallet daemon (it holds the keys and signs/broadcasts). **Setting `WALLETD_URL` is the mode switch:**

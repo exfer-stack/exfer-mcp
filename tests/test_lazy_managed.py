@@ -446,7 +446,9 @@ async def test_ensure_ready_does_not_retry_permanent_error(
         event = sup._ready_event
         assert event is not None
         attempts["n"] += 1
-        sup._ready_error = ConfigError("managed wallet unavailable: could not be unlocked (passphrase)")
+        sup._ready_error = ConfigError(
+            "managed wallet unavailable: could not be unlocked (passphrase)"
+        )
         sup._failure_count += 1
         sup._last_failure_at = time.monotonic()
         event.set()
@@ -512,7 +514,9 @@ def test_reap_kills_orphan_but_spares_live_peer_and_others(
     other_dd = _FakeProc(101, ["/x/exfer-walletd", "--datadir", "/some/other/dir"])
     not_walletd = _FakeProc(102, ["python", "-m", "http.server", dd])  # has dd, not walletd
     prefix_dd = _FakeProc(103, ["/x/exfer-walletd", "--datadir", dd + "-sibling"])  # prefix only
-    live_peer = _FakeProc(104, ["/x/exfer-walletd", "--datadir", dd], ppid=os.getpid())  # alive parent
+    live_peer = _FakeProc(
+        104, ["/x/exfer-walletd", "--datadir", dd], ppid=os.getpid()
+    )  # alive parent
     orphan = _FakeProc(105, ["/x/exfer-walletd", "--datadir", dd], ppid=1)  # reparented to init
     monkeypatch.setattr(
         mod.psutil,
@@ -592,6 +596,37 @@ def test_prewarm_fetches_binary_then_exits(
         server_mod.asyncio,
         "run",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not serve in --prewarm")),
+    )
+
+    server_mod.main()
+
+    assert calls["n"] == 1
+    assert "walletd binary ready" in capsys.readouterr().out
+
+
+def test_prewarm_via_env_var_when_flag_not_forwarded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # EXFER_MCP_PREWARM=1 must trigger prewarm even when --prewarm is NOT in argv
+    # (robust fallback for hosts/shells that don't forward a trailing CLI flag).
+    import exfer_mcp.walletd_fetch as wf
+    from exfer_mcp import server as server_mod
+
+    fake = tmp_path / "wd"
+    fake.write_text("#!/bin/sh\n")
+    calls = {"n": 0}
+
+    def _fetch() -> Path:
+        calls["n"] += 1
+        return fake
+
+    monkeypatch.setattr(wf, "ensure_walletd_binary", _fetch)
+    monkeypatch.setattr(sys, "argv", ["exfer-mcp"])  # NO --prewarm flag
+    monkeypatch.setenv("EXFER_MCP_PREWARM", "1")
+    monkeypatch.setattr(
+        server_mod.asyncio,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not serve in prewarm")),
     )
 
     server_mod.main()
