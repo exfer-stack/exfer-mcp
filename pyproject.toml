@@ -24,10 +24,9 @@ classifiers = [
 ]
 # The Python SDK's canonical PyPI package is now `exfer` (formerly published as
 # `exfer-walletd`; import name is `exfer`). The swap on-ramp tools need the
-# cross-chain methods added in exfer 0.11.0a1 (swap_*/bsc_*), so the floor is a
-# prerelease — a prerelease floor also lets resolvers pick the prerelease SDK.
+# cross-chain methods added in exfer 0.11.0 (swap_*/bsc_*).
 dependencies = [
-    "exfer>=0.11.0a1,<1.0",
+    "exfer>=0.11.0,<1.0",
     "mcp>=1.0,<2.0",
     # Cross-platform process inspection/termination for the managed-walletd
     # orphan reaper (Linux/macOS/Windows) — replaces the old /proc-only path.
