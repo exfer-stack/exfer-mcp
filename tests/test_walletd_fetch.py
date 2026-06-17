@@ -93,3 +93,33 @@ def test_refuses_unpinned_version_without_touching_network(
     monkeypatch.setattr(wf, "_http_get", boom)
     with pytest.raises(ConfigError, match="pins no verified SHA-256"):
         wf.ensure_walletd_binary()
+
+
+def test_http_get_verifies_tls_with_certifi(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: the walletd download must verify TLS against certifi's CA
+    # bundle. Python's stock urllib has no usable trust store on Windows, so an
+    # unconfigured urlopen failed with CERTIFICATE_VERIFY_FAILED there. Assert
+    # urlopen receives an SSLContext that actually loaded CA certs.
+    import ssl
+
+    captured: dict[str, object] = {}
+
+    class _Resp:
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *a: object) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return b"ok"
+
+    def fake_urlopen(req: object, timeout: object = None, context: object = None) -> _Resp:
+        captured["context"] = context
+        return _Resp()
+
+    monkeypatch.setattr(wf.urllib.request, "urlopen", fake_urlopen)
+    assert wf._http_get("https://example.test/walletd") == b"ok"
+    ctx = captured["context"]
+    assert isinstance(ctx, ssl.SSLContext)
+    assert ctx.cert_store_stats()["x509_ca"] > 0, "certifi CA bundle must be loaded"

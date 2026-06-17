@@ -32,6 +32,9 @@ dependencies = [
     # Cross-platform process inspection/termination for the managed-walletd
     # orphan reaper (Linux/macOS/Windows) — replaces the old /proc-only path.
     "psutil>=5.9",
+    # CA bundle for the walletd-binary download: Python's stock urllib has no
+    # usable trust store on Windows, so verification needs certifi explicitly.
+    "certifi>=2024.0.0",
 ]
 
 [project.scripts]

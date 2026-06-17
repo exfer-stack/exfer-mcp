@@ -25,9 +25,12 @@ import contextlib
 import hashlib
 import os
 import platform
+import ssl
 import sys
 import urllib.request
 from pathlib import Path
+
+import certifi
 
 from .config import ConfigError
 
@@ -110,8 +113,14 @@ def _harden(path: Path) -> None:
 
 
 def _http_get(url: str) -> bytes:
+    # Verify TLS against certifi's CA bundle, not the platform default. Python's
+    # stock urllib has no usable trust store on Windows (and some minimal Linux
+    # images), so an unconfigured urlopen fails the GitHub-releases download with
+    # "CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate". certifi
+    # ships the bundle and works identically on every platform.
+    ctx = ssl.create_default_context(cafile=certifi.where())
     req = urllib.request.Request(url, headers={"User-Agent": "exfer-mcp"})
-    with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT_SECS) as resp:
+    with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT_SECS, context=ctx) as resp:
         data: bytes = resp.read()
     return data
 
