@@ -41,7 +41,10 @@ _STATUS_NOTE = (
     "Status lifecycle: quoted -> user_locked -> pool_locked -> claiming -> "
     "completed. TERMINAL states are 'completed' (success), 'refunded', and "
     "'failed'; keep polling on any other value. Intermediate states can be "
-    "skipped between polls (cross-chain settlement is fast)."
+    "skipped between polls (cross-chain settlement is fast). In the v2 "
+    "(pool-locks-first) flow the local status goes quoted -> user_locked -> "
+    "completed (the pool settles both legs), so don't wait for pool_locked/"
+    "claiming there."
 )
 
 BSC_GET_ADDRESS_TOOL = mcp_types.Tool(
@@ -104,6 +107,16 @@ SWAP_GET_QUOTE_TOOL = mcp_types.Tool(
             "direction": {"type": "string", "enum": ["bnb_to_exfer", "exfer_to_bnb"]},
             "amount_in": {"type": "string", "description": "Decimal amount in the input asset."},
             "from": {**_HEX64, "description": "EXFER address for the EXFER leg (64 hex)."},
+            "flow": {
+                "type": "string",
+                "enum": ["v1", "v2"],
+                "description": (
+                    "Optional protocol flow. 'v2' (pool-locks-first) lets the user "
+                    "lock once and walk away — the pool settles both legs; 'v1' "
+                    "(default) is the legacy user-locks-first flow. Omit to use the "
+                    "pool's default."
+                ),
+            },
         },
         "required": ["direction", "amount_in", "from"],
         "additionalProperties": False,
@@ -202,6 +215,7 @@ async def swap_get_quote(
             direction=arguments["direction"],
             amount_in=arguments["amount_in"],
             from_=arguments["from"],
+            flow=arguments.get("flow"),
         )
     except Exception as exc:
         return render_error(exc)
