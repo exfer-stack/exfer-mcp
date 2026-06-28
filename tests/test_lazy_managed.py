@@ -108,7 +108,7 @@ async def test_list_tools_returns_immediately_while_walletd_not_ready() -> None:
     tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
     elapsed = time.monotonic() - started
 
-    assert len(tools) == 35
+    assert len(tools) == 40
     assert not provider_called, "list_tools must never touch the walletd provider"
     assert elapsed < _HANDSHAKE_BUDGET_SECS
 
@@ -166,7 +166,7 @@ async def test_handshake_non_blocking_with_unready_supervisor(
 
     try:
         tools = await asyncio.wait_for(_invoke_list_tools(server), timeout=_HANDSHAKE_BUDGET_SECS)
-        assert len(tools) == 35
+        assert len(tools) == 40
         # The bring-up is genuinely still pending (not yet ready).
         assert sup._ready_event is not None and not sup._ready_event.is_set()
     finally:

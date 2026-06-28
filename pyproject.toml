@@ -28,6 +28,10 @@ classifiers = [
 dependencies = [
     "exfer>=0.11.0,<1.0",
     "mcp>=1.0,<2.0",
+    # Direct async JSON-RPC client to the L1 node for the network/explorer tools
+    # (node_fetch.py). httpx is already pulled in transitively by `exfer`, but
+    # we import it directly so we depend on it explicitly.
+    "httpx>=0.27",
     # Cross-platform process inspection/termination for the managed-walletd
     # orphan reaper (Linux/macOS/Windows) — replaces the old /proc-only path.
     "psutil>=5.9",

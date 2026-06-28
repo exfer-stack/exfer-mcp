@@ -65,8 +65,12 @@ def test_tool_count() -> None:
     # on-ramp set (bsc_get_address + swap_pool_info + swap_get_quote +
     # swap_status + swap_list + swap_execute + swap_refund) brought it to 34;
     # adding bsc_get_balance (read BNB balance to confirm deposits) makes 35.
+    # The network/explorer set (network_status + network_hashrate + get_block +
+    # get_transaction), which read the node directly instead of walletd, brings
+    # it to 39. The pool-stats tool (earn_pool_stats), which reads the mining
+    # pool's HTTP stats API, brings it to 40.
     # Every tool must have a handler.
-    assert len(TOOLS) == 35
+    assert len(TOOLS) == 40
     assert len(HANDLERS) == len(TOOLS)
     assert {t.name for t in TOOLS} == set(HANDLERS)
 

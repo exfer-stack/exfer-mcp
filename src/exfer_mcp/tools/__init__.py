@@ -48,11 +48,25 @@ from .htlc import (
     htlc_reclaim,
     htlc_status,
 )
+from .network import (
+    GET_BLOCK_TOOL,
+    GET_TRANSACTION_TOOL,
+    NETWORK_HASHRATE_TOOL,
+    NETWORK_STATUS_TOOL,
+    get_block,
+    get_transaction,
+    network_hashrate,
+    network_status,
+)
 from .payment_uri import (
     PAYMENT_URI_DECODE_TOOL,
     PAYMENT_URI_ENCODE_TOOL,
     payment_uri_decode,
     payment_uri_encode,
+)
+from .pool_stats import (
+    POOL_STATS_TOOL,
+    earn_pool_stats,
 )
 from .quote import (
     QUOTE_ISSUE_TOOL,
@@ -115,6 +129,11 @@ TOOLS: list[mcp_types.Tool] = [
     LIST_ADDRESSES_TOOL,
     GET_BALANCE_TOOL,
     GET_BLOCK_HEIGHT_TOOL,
+    # network / explorer (read the node directly, no walletd needed)
+    NETWORK_STATUS_TOOL,
+    NETWORK_HASHRATE_TOOL,
+    GET_BLOCK_TOOL,
+    GET_TRANSACTION_TOOL,
     SIMULATE_TRANSFER_TOOL,
     TRANSFER_TOOL,
     # signed price credential (EXFER-QUOTE)
@@ -143,6 +162,7 @@ TOOLS: list[mcp_types.Tool] = [
     EARN_TOOL,
     EARN_STATUS_TOOL,
     EARN_STOP_TOOL,
+    POOL_STATS_TOOL,
     # on-ramp: cross-chain swap USDT/BNB -> EXFER (read tools first)
     BSC_GET_ADDRESS_TOOL,
     BSC_GET_BALANCE_TOOL,
@@ -161,6 +181,10 @@ HANDLERS: dict[str, ToolHandler] = {
     LIST_ADDRESSES_TOOL.name: list_addresses,
     GET_BALANCE_TOOL.name: get_balance,
     GET_BLOCK_HEIGHT_TOOL.name: get_block_height,
+    NETWORK_STATUS_TOOL.name: network_status,
+    NETWORK_HASHRATE_TOOL.name: network_hashrate,
+    GET_BLOCK_TOOL.name: get_block,
+    GET_TRANSACTION_TOOL.name: get_transaction,
     SIMULATE_TRANSFER_TOOL.name: simulate_transfer,
     TRANSFER_TOOL.name: transfer,
     QUOTE_ISSUE_TOOL.name: quote_issue,
@@ -183,6 +207,7 @@ HANDLERS: dict[str, ToolHandler] = {
     EARN_PROBE_TOOL.name: earn_probe,
     EARN_STATUS_TOOL.name: earn_status,
     EARN_STOP_TOOL.name: earn_stop,
+    POOL_STATS_TOOL.name: earn_pool_stats,
     BSC_GET_ADDRESS_TOOL.name: bsc_get_address,
     BSC_GET_BALANCE_TOOL.name: bsc_get_balance,
     SWAP_POOL_INFO_TOOL.name: swap_pool_info,
@@ -204,5 +229,13 @@ NO_WALLETD_TOOLS: frozenset[str] = frozenset(
         EARN_PROBE_TOOL.name,
         EARN_STATUS_TOOL.name,
         EARN_STOP_TOOL.name,
+        # pool stats hits the pool's HTTP stats API, not walletd.
+        POOL_STATS_TOOL.name,
+        # network / explorer query the node directly (not walletd), so they work
+        # even while the managed walletd is still booting or unavailable.
+        NETWORK_STATUS_TOOL.name,
+        NETWORK_HASHRATE_TOOL.name,
+        GET_BLOCK_TOOL.name,
+        GET_TRANSACTION_TOOL.name,
     }
 )
