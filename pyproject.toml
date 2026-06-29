@@ -24,9 +24,10 @@ classifiers = [
 ]
 # The Python SDK's canonical PyPI package is now `exfer` (formerly published as
 # `exfer-walletd`; import name is `exfer`). The swap on-ramp tools need the
-# cross-chain methods added in exfer 0.11.0 (swap_*/bsc_*).
+# cross-chain methods added in exfer 0.11.0 (swap_*/bsc_*); defaulting the agent's
+# swaps to v2 requires the `flow` kwarg on swap_get_quote, which shipped in 0.11.1.
 dependencies = [
-    "exfer>=0.11.0,<1.0",
+    "exfer>=0.11.1,<1.0",
     "mcp>=1.0,<2.0",
     # Direct async JSON-RPC client to the L1 node for the network/explorer tools
     # (node_fetch.py). httpx is already pulled in transitively by `exfer`, but

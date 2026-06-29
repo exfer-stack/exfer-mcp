@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1
+
+- **Agent swaps default to v2 (pool-locks-first).** `exfer_swap_get_quote` now
+  defaults `flow` to `"v2"` when the caller omits it, so agent-driven swaps get
+  the faster pool-locks-first protocol (a buy settles in ~3 min instead of the
+  ~12 min a v1 buy takes) — matching the in-app Swap screen. An explicit
+  `flow: "v1"` is still honored, and walletd safely auto-downgrades to v1 against
+  a non-v2 pool. Requires `exfer >= 0.11.1` (the SDK version that forwards `flow`).
+
 ## 0.7.0
 
 - **Pool payout stats (read your mining pool's view).** One new read-only
