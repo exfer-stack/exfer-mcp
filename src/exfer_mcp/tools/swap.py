@@ -111,10 +111,10 @@ SWAP_GET_QUOTE_TOOL = mcp_types.Tool(
                 "type": "string",
                 "enum": ["v1", "v2"],
                 "description": (
-                    "Optional protocol flow. 'v2' (pool-locks-first) lets the user "
-                    "lock once and walk away — the pool settles both legs; 'v1' "
-                    "(default) is the legacy user-locks-first flow. Omit to use the "
-                    "pool's default."
+                    "Optional protocol flow. 'v2' (pool-locks-first; the default — "
+                    "the user locks once and walks away, the pool settles both legs "
+                    "and a buy is much faster) or 'v1' (legacy user-locks-first). "
+                    "Omit to use v2."
                 ),
             },
         },
@@ -215,7 +215,12 @@ async def swap_get_quote(
             direction=arguments["direction"],
             amount_in=arguments["amount_in"],
             from_=arguments["from"],
-            flow=arguments.get("flow"),
+            # Default to v2 (pool-locks-first) when the caller omits `flow`:
+            # the user locks once and walks away, the pool settles both legs,
+            # and a buy is much faster. walletd safely auto-downgrades a v2
+            # request to v1 if the pool isn't v2-capable, so this is safe even
+            # against an old pool. An explicit "v1"/"v2" is still honoured.
+            flow=arguments.get("flow") or "v2",
         )
     except Exception as exc:
         return render_error(exc)
